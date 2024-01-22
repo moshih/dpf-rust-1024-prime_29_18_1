@@ -1,10 +1,5 @@
 use crate::auth::{client_post_gen, gen_beaver_triples, gen_beaver_triples2, set_up_init_vars};
-use crate::dpf::{
-    dpf_eval_lwe_block_new_all_sub, dpf_eval_lwe_seed_block_all_sub,
-    dpf_eval_lwe_seed_block_get_bs, dpf_gen_lwe_seed_block_new_sq_compact_veri,
-    fill_rand_aes128_modq, fill_rand_aes128_modq_nr_3_by_seed, fill_rand_aes128_modq_nr_6_by_seed,
-    fill_rand_aes128_nr,
-};
+use crate::dpf::{dpf_eval_lwe_block_new_all_sub, dpf_eval_lwe_block_new_all_sub_timing, dpf_eval_lwe_seed_block_all_sub, dpf_eval_lwe_seed_block_all_sub_timing, dpf_eval_lwe_seed_block_get_bs, dpf_gen_lwe_seed_block_new_sq_compact_veri, fill_rand_aes128_modq, fill_rand_aes128_modq_nr_3_by_seed, fill_rand_aes128_modq_nr_6_by_seed, fill_rand_aes128_nr};
 use crate::ntt::{barrett_reduce, mul_mod_mont};
 use crate::params::{
     BT_INST1, BT_INST2_A, BT_INST2_B, E_BYTES, NOISE_BITS, NOISE_LEN, NUM_BLOCK, NUM_SERVERS,
@@ -136,6 +131,55 @@ pub fn client_post_gen_timing(
     }
 }
 
+pub fn client_post_gen_timing_single(
+    noise_i32: &[i32],
+    server_noise_bits: &mut [u32],
+    bt_seeds_pt1: &mut [u8],
+    correction_pt1: &mut [i32],
+    bt_seeds_pt2: &mut [u8],
+    correction_pt2a: &mut [i32],
+    correction_pt2b: &mut [i32],
+) {
+
+    let mut rand_seed = vec![0u8; SEED_IV_LEN];
+    fill_rand_aes128_nr(&mut rand_seed, SEED_IV_LEN);
+
+    gen_beaver_triples(&rand_seed, bt_seeds_pt1, correction_pt1, BT_INST1);
+
+    fill_rand_aes128_nr(bt_seeds_pt2, SEED_IV_LEN * NUM_SERVERS);
+
+    fill_rand_aes128_nr(&mut rand_seed, SEED_IV_LEN);
+
+    gen_beaver_triples(&rand_seed, bt_seeds_pt2, correction_pt2a, BT_INST2_A);
+
+}
+
+pub fn client_post_gen_timing_numblock(
+    noise_i32: &[i32],
+    server_noise_bits: &mut [u32],
+    bt_seeds_pt1: &mut [u8],
+    correction_pt1: &mut [i32],
+    bt_seeds_pt2: &mut [u8],
+    correction_pt2a: &mut [i32],
+    correction_pt2b: &mut [i32],
+) {
+    // separates the noise bits
+    for i in 0..1 {
+        separate_bits_single_block(&noise_i32, server_noise_bits);
+    }
+    let mut rand_seed = vec![0u8; SEED_IV_LEN];
+
+
+    for i in 0..1 {
+        gen_beaver_triples(
+            &rand_seed,
+            bt_seeds_pt2,
+            correction_pt2b,
+            BT_INST2_B / NUM_BLOCK,
+        );
+    }
+}
+
 pub fn dpf_gen_lwe_seed_block_new_sq_compact_snip_aftergen_timings(gen_iterations: usize) {
     // Setup of variables
     // NOISE_LEN: usize = NUM_BLOCK * N_PARAM;
@@ -150,6 +194,7 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_snip_aftergen_timings(gen_iteration
     let mut correction_pt2b = vec![0i32; BT_INST2_B / NUM_BLOCK];
 
     ////////////////////////////////////////////////////////////
+    /*
     let gen_start = Instant::now();
     for _iter_test in 0..gen_iterations {
         client_post_gen_timing(
@@ -164,6 +209,36 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_snip_aftergen_timings(gen_iteration
     }
     let gen_duration = gen_start.elapsed();
     println!("seed_compact AFTER GEN Time elapsed is: {:?}", gen_duration);
+
+     */
+    let gen_start = Instant::now();
+    for _iter_test in 0..gen_iterations {
+        client_post_gen_timing_single(
+            &noise_i32,
+            &mut server_noise_bits,
+            &mut bt_seeds_pt1,
+            &mut correction_pt1,
+            &mut bt_seeds_pt2,
+            &mut correction_pt2a,
+            &mut correction_pt2b,
+        );
+    }
+    let gen_duration = gen_start.elapsed();
+    println!("seed_compact AFTER GEN Time single elapsed is: {:?}", gen_duration);
+    let gen_start_num_block = Instant::now();
+    for _iter_test in 0..gen_iterations {
+        client_post_gen_timing_numblock(
+            &noise_i32,
+            &mut server_noise_bits,
+            &mut bt_seeds_pt1,
+            &mut correction_pt1,
+            &mut bt_seeds_pt2,
+            &mut correction_pt2a,
+            &mut correction_pt2b,
+        );
+    }
+    let gen_duration_num_block = gen_start_num_block.elapsed();
+    println!("seed_compact AFTER GEN Time numblock elapsed is: {:?}", gen_duration_num_block);
 }
 
 // "compact" because (n-1) servers will get seeds to expand on for the majority of the data sents
@@ -279,7 +354,11 @@ pub fn dpf_eval_every_server_timings(eval_iterations: usize) {
             let mut r_e_c1_tmp = [0i32; NUM_SERVERS];
             let mut r_e_c2_tmp = [0i32; NUM_SERVERS];
 
-            r1_vec_u8.fill(0);
+            //r1_vec_u8.fill(0);
+            for i in 0..r1_vec_u8.len() {
+                r1_vec_u8[i] = 0;
+            }
+
             gen_r1_vec_sub(&r1_seed, &mut r1_vec_u8[..], a_i);
             let r1_vec: &mut [i32] = bytemuck::cast_slice_mut(&mut r1_vec_u8);
             //r1_vec.fill(2);
@@ -708,11 +787,11 @@ pub fn dpf_eval_eval_all_from_seed_timings(eval_iterations: usize) {
     for _iter_test in 0..eval_iterations {
         // Servers compute this
 
-        for a_i in 0..N_PARAM {
+        for a_i in 0..1 {
             // Eval code
             // for eval_s_iter in 1..NUM_SERVERS {
             for eval_s_iter in 1..2 {
-                dpf_eval_lwe_seed_block_all_sub(
+                dpf_eval_lwe_seed_block_all_sub_timing(
                     a_i,
                     &mut table_sub,
                     &a_vec,
@@ -727,7 +806,7 @@ pub fn dpf_eval_eval_all_from_seed_timings(eval_iterations: usize) {
     //let gen_duration = gen_start.elapsed().as_micros();
     let eval_duration = eval_start.elapsed();
     println!(
-        "EVAL eval_all_from_seed Time elapsed is: {:?}",
+        "EVAL eval_all_from_seed (mul N_PARAM) Time elapsed is: {:?}",
         eval_duration
     );
 }
@@ -750,8 +829,8 @@ pub fn dpf_eval_eval_all_from_block_timings(eval_iterations: usize) {
         // Servers compute this
         //Compute beaver triples
 
-        for a_i in 0..N_PARAM {
-            dpf_eval_lwe_block_new_all_sub(
+        for a_i in 0..1 {
+            dpf_eval_lwe_block_new_all_sub_timing(
                 a_i,
                 &mut table_sub,
                 &a_vec,
@@ -765,7 +844,7 @@ pub fn dpf_eval_eval_all_from_block_timings(eval_iterations: usize) {
     //let gen_duration = gen_start.elapsed().as_micros();
     let eval_duration = eval_start.elapsed();
     println!(
-        "EVAL eval_all_from_block Time elapsed is: {:?}",
+        "EVAL eval_all_from_block (mul N_PARAM) Time elapsed is: {:?}",
         eval_duration
     );
 }

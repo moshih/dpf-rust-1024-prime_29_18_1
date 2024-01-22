@@ -37,6 +37,7 @@ fn main_check_correctness() {
     //fn main() {
     println!("----Construction 2.14----");
 
+    let start = Instant::now();
     // Setup of variables
     let buffer: i32 = 128;
     let ori_message: i32 = 101;
@@ -54,6 +55,9 @@ fn main_check_correctness() {
         index,
     ) = set_up_init_vars(buffer, ori_message, index);
 
+    let setup_duration = start.elapsed();
+    println!("setup_duration Time elapsed is: {:?}", setup_duration);
+
     println!("GEN");
     dpf_gen_lwe_seed_block_new_sq_compact_veri(
         index,
@@ -68,6 +72,8 @@ fn main_check_correctness() {
         &mut coeff_seeds[..],
         true,
     );
+    let gen_duration = start.elapsed();
+    println!("gen_duration Time elapsed is: {:?}", gen_duration);
 
     let (
         mut server_noise_bits,
@@ -89,6 +95,9 @@ fn main_check_correctness() {
         &mut correction_pt2a,
         &mut correction_pt2b,
     );
+
+    let post_gen_duration = start.elapsed();
+    println!("post_gen_duration Time elapsed is: {:?}", post_gen_duration);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
     println!("EVAL 0");
@@ -124,6 +133,9 @@ fn main_check_correctness() {
     let b_bt: &[i32] = bytemuck::cast_slice(&b_bt_u8);
     let c_bt: &[i32] = bytemuck::cast_slice(&c_bt_u8);
 
+    let eval0_duration = start.elapsed();
+    println!("eval0_duration Time elapsed is: {:?}", eval0_duration);
+
     println!("EVAL 1");
     ////////////////////////////////////////////////////////////////////////////////////
     // step 2. d. i. B.: Beaver Triple for Message Well-formedness
@@ -142,6 +154,8 @@ fn main_check_correctness() {
         &r_c2_eval,
     );
     let b_vec_1d_total: &[i32] = bytemuck::cast_slice(&b_vec_1d_u8_total);
+    let eval1_duration = start.elapsed();
+    println!("eval1_duration Time elapsed is: {:?}", eval1_duration);
 
     println!("EVAL 2");
     // Part 2 .e. : Verify b and e ̄ are binary-valued:
@@ -155,6 +169,8 @@ fn main_check_correctness() {
         inv_servers,
         &b_vec_1d_total,
     );
+    let eval2_duration = start.elapsed();
+    println!("eval2_duration Time elapsed is: {:?}", eval2_duration);
 
     if msg_wf && b_e_check {
         println!("Auth Passed");
@@ -180,6 +196,7 @@ fn main_param_block() {
 
     //println!("A single AES ctr seed generates {} Bytes ({} KB or {} MB)", aes_block, aes_block/1024.0, aes_block/(1024.0*1024.0));
 
+    // B vec + S vec + V vec
     let sent_to_server_block: f32 =
         (E_BYTES * N_PARAM + E_BYTES * N_PARAM * N_PARAM + E_BYTES * NUM_BLOCK * N_PARAM) as f32;
     println!(
@@ -188,6 +205,8 @@ fn main_param_block() {
         sent_to_server_block / 1024.0,
         sent_to_server_block / (1024.0 * 1024.0)
     );
+
+    // V vec + (B+S)) seed
     let sent_to_server_block_seed: f32 = (E_BYTES * NUM_BLOCK * N_PARAM + 32) as f32;
     println!(
         "Other servers gets client DPF data sent {} Bytes ({} KB or {} MB)",
@@ -196,21 +215,47 @@ fn main_param_block() {
         sent_to_server_block_seed / (1024.0 * 1024.0)
     );
 
-    let snip_sent_to_server_block: f32 =
-        (E_BYTES * (E_BYTES * N_PARAM + 2 + NUM_BLOCK * N_PARAM * NOISE_BITS) + 2 * 32) as f32;
+    /*
+    BT_INST1 = 3*N_PARAM+2
+    BT_INST2_A = N_PARAM
+    BT_INST2_B = NOISE_LEN * NOISE_BITS
+     */
+    // (rx,st,sa) seed, noise and sign bit seeds, and BTs
+    let snip_sent_to_server_block: f32 = (32+( NUM_BLOCK * N_PARAM * (NOISE_BITS*E_BYTES+1)) + E_BYTES*(BT_INST1+BT_INST2_A+BT_INST2_B)) as f32;
+    //(E_BYTES * (E_BYTES * N_PARAM + 2 + NUM_BLOCK * N_PARAM * NOISE_BITS) + 2 * 32) as f32;
     println!(
         "A single server gets SNIP data sent {} Bytes ({} KB or {} MB)",
         snip_sent_to_server_block,
         snip_sent_to_server_block / 1024.0,
         snip_sent_to_server_block / (1024.0 * 1024.0)
     );
-    let snip_sent_to_server_block_seed: f32 = (2 * 32) as f32;
+    // (rx,st,sa) seed, noise and sign bit seeds, and BT seeds
+    let snip_sent_to_server_block_seed: f32 = (32+( NUM_BLOCK * N_PARAM * (NOISE_BITS*E_BYTES+1)) + 2*32) as f32;
+    //(2 * 32) as f32;
     println!(
         "Other servers gets client DPF data sent {} Bytes ({} KB or {} MB)",
         snip_sent_to_server_block_seed,
         snip_sent_to_server_block_seed / 1024.0,
         snip_sent_to_server_block_seed / (1024.0 * 1024.0)
     );
+
+    println!("In total:");
+    let total_data_sent_to_server_block = sent_to_server_block + snip_sent_to_server_block;
+    let total_data_sent_to_server_seed = sent_to_server_block_seed + snip_sent_to_server_block_seed;
+    println!(
+        "A single block server gets total data sent {} Bytes ({} KB or {} MB)",
+        total_data_sent_to_server_block,
+        total_data_sent_to_server_block / 1024.0,
+        total_data_sent_to_server_block / (1024.0 * 1024.0)
+    );
+
+    println!(
+        "A single seed server gets total data sent {} Bytes ({} KB or {} MB)",
+        total_data_sent_to_server_seed,
+        total_data_sent_to_server_seed / 1024.0,
+        total_data_sent_to_server_seed / (1024.0 * 1024.0)
+    );
+
     println!("--------------------------///--------------------------");
 }
 
@@ -242,6 +287,9 @@ fn block_sq_compact_snip_timings_server(
     println!("----------------------------------------------------");
 }
 fn main_authtiming() {
+    println!("num servers: {}", NUM_SERVERS);
+    println!("N_PARAM: {}", N_PARAM);
+    println!("NUM_BLOCK: {}", NUM_BLOCK);
     let start = Instant::now();
     //main_param_block();
 
@@ -316,8 +364,15 @@ fn main_block_sq_new_compact_correctness() {
         let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
 
         for eval_s_iter in 0..(NUM_SERVERS - 1) {
-            b_vecs_1d_u8_eval.fill(0);
-            s_vecs_1d_u8_eval.fill(0);
+            //b_vecs_1d_u8_eval.fill(0);
+            //s_vecs_1d_u8_eval.fill(0);
+            for i in 0..b_vecs_1d_u8_eval.len() {
+                b_vecs_1d_u8_eval[i] = 0;
+            }
+            for i in 0..s_vecs_1d_u8_eval.len() {
+                s_vecs_1d_u8_eval[i] = 0;
+            }
+
             dpf_eval_lwe_seed_block(
                 index,
                 &mut recovered_message_t,
@@ -361,19 +416,18 @@ fn main_block_sq_new_compact_correctness() {
 // has expansion factor of
 // 2^10, 2^12, 2^14, 2^16, 2^18, 2^20
 fn main() {
-    //main_param_block();
+    main_param_block();
 
     // Basic NTT checks
-
-    ntt::ntt_base_test();
-    ntt::ntt_mul_test();
+    //ntt::ntt_base_test();
+    //ntt::ntt_mul_test();
 
     // correctness of dpf (no auth or snip)
-    main_block_sq_new_compact_correctness();
+    //main_block_sq_new_compact_correctness();
 
     // Checks that Auth DPF Passes
     main_check_correctness();
 
     // Auth Timings
-    main_authtiming();
+    //main_authtiming();
 }

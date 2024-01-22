@@ -150,7 +150,11 @@ pub fn server_gen_cc_combine(
     let mut rx_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
 
     for a_iter in 0..N_PARAM {
-        rx_vec_u8.fill(0);
+        //rx_vec_u8.fill(0);
+        for i in 0..rx_vec_u8.len() {
+            rx_vec_u8[i] = 0;
+        }
+
         c0_temp = 0;
         c1_temp = 0;
         c2_temp = 0;
@@ -225,7 +229,11 @@ pub fn snip_test_temp() {
     let mut running_total: i32 = 0;
     let mut vec_out_partial = vec![0u8; 4 * NUM_BLOCK * N_PARAM];
     for iter in 0..N_PARAM {
-        vec_out_partial.fill(0);
+        //vec_out_partial.fill(0);
+        for i in 0..vec_out_partial.len() {
+            vec_out_partial[i] = 0;
+        }
+
         fill_rand_aes128_modq_nr_1_by_seed_sq_getsub_custom(
             &seed[0..16],
             &seed[16..32],

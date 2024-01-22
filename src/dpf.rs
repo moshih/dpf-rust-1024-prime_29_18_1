@@ -1897,8 +1897,14 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact(
             s_vec[iter] -= s_vec_temp[iter];
         }
 
-        b_vec_temp.fill(0);
-        s_vec_temp.fill(0);
+        //b_vec_temp.fill(0);
+        //s_vec_temp.fill(0);
+        for i in 0..b_vec_temp.len() {
+            b_vec_temp[i] = 0;
+        }
+        for i in 0..s_vec_temp.len() {
+            s_vec_temp[i] = 0;
+        }
     }
     b_vec[block_lx] += 1;
 
@@ -2012,8 +2018,14 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_snip(
             s_vec[iter] = s_vec[iter] - s_vec_temp[iter];
         }
 
-        b_vec_temp.fill(0);
-        s_vec_temp.fill(0);
+        //b_vec_temp.fill(0);
+        //s_vec_temp.fill(0);
+        for i in 0..b_vec_temp.len() {
+            b_vec_temp[i] = 0;
+        }
+        for i in 0..s_vec_temp.len() {
+            s_vec_temp[i] = 0;
+        }
     }
     b_vec[block_lx] += 1;
 
@@ -2131,8 +2143,14 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_veri(
             s_vec[iter] = s_vec[iter] - s_vec_temp[iter];
         }
 
-        b_vec_temp.fill(0);
-        s_vec_temp.fill(0);
+        //b_vec_temp.fill(0);
+        //s_vec_temp.fill(0);
+        for i in 0..b_vec_temp.len() {
+            b_vec_temp[i] = 0;
+        }
+        for i in 0..s_vec_temp.len() {
+            s_vec_temp[i] = 0;
+        }
     }
     b_vec[block_lx] += 1;
 
@@ -2234,8 +2252,14 @@ pub fn dpf_gen_lwe_seed_block_new_sq_double_expand_compact(
             s_vec[iter] -= s_vec_temp[iter];
         }
 
-        b_vec_temp.fill(0);
-        s_vec_temp.fill(0);
+        //b_vec_temp.fill(0);
+        //s_vec_temp.fill(0);
+        for i in 0..b_vec_temp.len() {
+            b_vec_temp[i] = 0;
+        }
+        for i in 0..s_vec_temp.len() {
+            s_vec_temp[i] = 0;
+        }
     }
     b_vec[block_num * B_SLICE + block_lx] += 1;
 
@@ -2649,6 +2673,56 @@ pub fn dpf_eval_lwe_block_new_all_sub(
     }
 }
 
+// used by the single server that has the full uncompressed vectors
+// this produces N_PARAM parts
+pub fn dpf_eval_lwe_block_new_all_sub_timing(
+    index: usize,
+    m: &mut [i32],
+    a_vec: &[i32],
+    b_vec_u8: &[u8],
+    s_vec_1d_u8: &[u8],
+    v_vec_u8: &[u8],
+) {
+    if NUM_SERVERS < 2 {
+        println!("There must be at least 2 servers!\n");
+        return;
+    }
+    //for l_iter in (0..N_PARAM * N_PARAM * NUM_BLOCK).step_by(N_PARAM)
+    //let l_iter:usize = N_PARAM * index;
+    for blk_i in 0..NUM_BLOCK {
+        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_PARAM;
+        {
+            let block_num = l_iter / (N_PARAM * N_PARAM);
+            let block_l = l_iter % (N_PARAM * N_PARAM);
+
+            let block_lx: usize = block_l / N_PARAM;
+
+            //SPEEDUP
+            let s_vecs: &[i32] = bytemuck::cast_slice(s_vec_1d_u8);
+            let s_star: &[i32] = &s_vecs[block_lx * N_PARAM..(block_lx + 1) * N_PARAM];
+
+            let mut g_expand = vec![0i32; N_PARAM];
+            g_func(
+                &a_vec[block_num * N_PARAM..(block_num + 1) * N_PARAM],
+                &s_star,
+                &mut g_expand,
+            );
+
+            let b_vec: &[i32] = bytemuck::cast_slice(b_vec_u8);
+            let v_vec: &[i32] = bytemuck::cast_slice(v_vec_u8);
+
+            let mut bv_i32: i32;
+
+            for ly_iter in 0..N_PARAM {
+                bv_i32 = mul_mod_mont(b_vec[block_lx], v_vec[V_SLICE * block_num + ly_iter]);
+
+                //m[ly_iter + block_num * N_PARAM * N_PARAM + block_lx * N_PARAM] = g_expand[ly_iter] + bv_i32;
+                m[ly_iter + blk_i * N_PARAM] = g_expand[ly_iter] + bv_i32;
+            }
+        }
+    }
+}
+
 // used by the all but one server
 #[allow(dead_code)]
 pub fn dpf_eval_lwe_seed_block_all(
@@ -2665,8 +2739,15 @@ pub fn dpf_eval_lwe_seed_block_all(
 
         let block_lx: usize = block_l / N_PARAM;
 
-        b_vec_u8.fill(0);
-        s_vec_1d_u8.fill(0);
+        //b_vec_u8.fill(0);
+        //s_vec_1d_u8.fill(0);
+        for i in 0..b_vec_u8.len() {
+            b_vec_u8[i] = 0;
+        }
+        for i in 0..s_vec_1d_u8.len() {
+            s_vec_1d_u8[i] = 0;
+        }
+
         fill_rand_aes128_modq_nr_2_by_seed_sq_getsub(
             &seed[0..16],
             &seed[16..32],
@@ -2709,8 +2790,15 @@ pub fn dpf_eval_lwe_seed_block_all_sub(
 
             let block_lx: usize = block_l / N_PARAM;
 
-            b_vec_u8.fill(0);
-            s_vec_1d_u8.fill(0);
+            //b_vec_u8.fill(0);
+            //s_vec_1d_u8.fill(0);
+            for i in 0..b_vec_u8.len() {
+                b_vec_u8[i] = 0;
+            }
+            for i in 0..s_vec_1d_u8.len() {
+                s_vec_1d_u8[i] = 0;
+            }
+
             fill_rand_aes128_modq_nr_2_by_seed_sq_getsub(
                 &seed[0..16],
                 &seed[16..32],
@@ -2721,6 +2809,107 @@ pub fn dpf_eval_lwe_seed_block_all_sub(
                 block_lx,
                 N_PARAM,
             );
+
+
+            dpf_eval_lwe_base_one_sq_whole_poly(
+                block_l,
+                //&mut m[l_iter..l_iter + N_PARAM],
+                &mut m[blk_i * N_PARAM..blk_i * N_PARAM + N_PARAM],
+                &a_vec[block_num * N_PARAM..(block_num + 1) * N_PARAM],
+                &b_vec_u8[..],
+                &s_vec_1d_u8[..],
+                &v_vec_u8[block_num * E_BYTES * V_SLICE..(block_num + 1) * E_BYTES * V_SLICE],
+            );
+        }
+    }
+    /*
+    for l_iter in (index * N_PARAM * NUM_BLOCK..(index+1) * N_PARAM * NUM_BLOCK).step_by(N_PARAM)
+    {
+        let block_num = l_iter / (N_PARAM * N_PARAM);
+        let block_l = l_iter % (N_PARAM * N_PARAM);
+
+        let block_lx: usize = block_l / N_PARAM;
+
+        b_vec_u8.fill(0);
+        s_vec_1d_u8.fill(0);
+        fill_rand_aes128_modq_nr_2_by_seed_sq_getsub(
+            &seed[0..16],
+            &seed[16..32],
+            b_vec_u8,
+            s_vec_1d_u8,
+            4 * B_SLICE,
+            4 * N_PARAM,
+            block_lx,
+            N_PARAM,
+        );
+
+        dpf_eval_lwe_base_one_sq_whole_poly(
+            block_l,
+            //&mut m[l_iter..l_iter + N_PARAM],
+            &mut m[offset*N_PARAM.. offset*N_PARAM+N_PARAM],
+            &a_vec[block_num * N_PARAM..(block_num + 1) * N_PARAM],
+            &b_vec_u8[..],
+            &s_vec_1d_u8[..],
+            &v_vec_u8[block_num * 4 * V_SLICE..(block_num + 1) * 4 * V_SLICE],
+        );
+        offset+=1;
+    }
+
+     */
+}
+
+// used by the all but one server
+pub fn dpf_eval_lwe_seed_block_all_sub_timing(
+    index: usize,
+    m: &mut [i32],
+    a_vec: &[i32],
+    b_vec_u8: &mut [u8],
+    s_vec_1d_u8: &mut [u8],
+    seed: &[u8],
+    v_vec_u8: &[u8],
+) {
+    //for l_iter in (0..N_PARAM * N_PARAM * NUM_BLOCK).step_by(N_PARAM)
+    //let l_iter:usize = index*N_PARAM;
+    for blk_i in 0..NUM_BLOCK {
+        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_PARAM;
+        {
+            let block_num = l_iter / (N_PARAM * N_PARAM);
+            let block_l = l_iter % (N_PARAM * N_PARAM);
+
+            let block_lx: usize = block_l / N_PARAM;
+
+            //b_vec_u8.fill(0);
+            //s_vec_1d_u8.fill(0);
+            for i in 0..b_vec_u8.len() {
+                b_vec_u8[i] = 0;
+            }
+            for i in 0..s_vec_1d_u8.len() {
+                s_vec_1d_u8[i] = 0;
+            }
+
+            /*
+            // todo: reimp
+            fill_rand_aes128_modq_nr_2_by_seed_sq_getsub(
+                &seed[0..16],
+                &seed[16..32],
+                b_vec_u8,
+                s_vec_1d_u8,
+                E_BYTES * B_SLICE,
+                E_BYTES * N_PARAM,
+                block_lx,
+                N_PARAM,
+            );
+
+             */
+            fill_rand_aes128_modq_nr_1_by_seed_sq_getsub(
+                &seed[0..16],
+                &seed[16..32],
+                s_vec_1d_u8,
+                E_BYTES * N_PARAM,
+                block_lx,
+                N_PARAM,
+            );
+
 
             dpf_eval_lwe_base_one_sq_whole_poly(
                 block_l,

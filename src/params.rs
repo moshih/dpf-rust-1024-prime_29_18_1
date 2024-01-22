@@ -9,7 +9,7 @@ pub const A_SLICE: usize = N_PARAM;
 pub const V_SLICE: usize = N_PARAM;
 pub const M_SLICE: usize = N_PARAM * N_PARAM;
 
-pub const NUM_BLOCK: usize = 2; //65536;
+pub const NUM_BLOCK: usize = 32; //65536;
 pub const B_BLOCK_SLICE: usize = NUM_SERVERS * N_PARAM;
 pub const S_BLOCK_SLICE: usize = NUM_SERVERS * N_PARAM * N_PARAM;
 pub const V_BLOCK_SLICE: usize = N_PARAM;

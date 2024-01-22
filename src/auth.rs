@@ -1,3 +1,4 @@
+use std::time::Instant;
 use crate::debug::get_sum_mod;
 use crate::dpf::{
     dpf_eval_lwe_block_new_all_sub, dpf_eval_lwe_seed_block_all_sub,
@@ -83,9 +84,19 @@ pub fn gen_beaver_triples(
     let mut b_temp_u8 = vec![0u8; E_BYTES * instances];
     let mut c_temp_u8 = vec![0u8; E_BYTES * instances];
     for s_i in 0..NUM_SERVERS {
-        a_temp_u8.fill(0);
-        b_temp_u8.fill(0);
-        c_temp_u8.fill(0);
+        //a_temp_u8.fill(0);
+        //b_temp_u8.fill(0);
+        //c_temp_u8.fill(0);
+        for i in 0..a_temp_u8.len() {
+            a_temp_u8[i] = 0;
+        }
+        for i in 0..b_temp_u8.len() {
+            b_temp_u8[i] = 0;
+        }
+        for i in 0..c_temp_u8.len() {
+            c_temp_u8[i] = 0;
+        }
+
         fill_rand_aes128_modq_nr_3_by_seed(
             &bt_seeds[s_i * SEED_IV_LEN..s_i * SEED_IV_LEN + 16],
             &bt_seeds[s_i * SEED_IV_LEN + 16..s_i * SEED_IV_LEN + 32],
@@ -147,12 +158,31 @@ pub fn gen_beaver_triples2(
     let mut c_temp_b_u8 = vec![0u8; E_BYTES * instances_b];
 
     for s_i in 0..NUM_SERVERS {
-        a_temp_a_u8.fill(0);
-        b_temp_a_u8.fill(0);
-        c_temp_a_u8.fill(0);
-        a_temp_b_u8.fill(0);
-        b_temp_b_u8.fill(0);
-        c_temp_b_u8.fill(0);
+        //a_temp_a_u8.fill(0);
+        //b_temp_a_u8.fill(0);
+        //c_temp_a_u8.fill(0);
+        //a_temp_b_u8.fill(0);
+        //b_temp_b_u8.fill(0);
+        //c_temp_b_u8.fill(0);
+        for i in 0..a_temp_a_u8.len() {
+            a_temp_a_u8[i] = 0;
+        }
+        for i in 0..b_temp_a_u8.len() {
+            b_temp_a_u8[i] = 0;
+        }
+        for i in 0..c_temp_a_u8.len() {
+            c_temp_a_u8[i] = 0;
+        }
+        for i in 0..a_temp_b_u8.len() {
+            a_temp_b_u8[i] = 0;
+        }
+        for i in 0..b_temp_b_u8.len() {
+            b_temp_b_u8[i] = 0;
+        }
+        for i in 0..c_temp_b_u8.len() {
+            c_temp_b_u8[i] = 0;
+        }
+
         fill_rand_aes128_modq_nr_6_by_seed(
             &bt_seeds[s_i * SEED_IV_LEN..s_i * SEED_IV_LEN + 16],
             &bt_seeds[s_i * SEED_IV_LEN + 16..s_i * SEED_IV_LEN + 32],
@@ -322,6 +352,7 @@ pub fn servers_auth_init_and_prep_eval(
     [u8; 32],
     [u8; 32],
 ) {
+    let start = Instant::now();
     // one time calculation made at server startup
     let inv_servers = mod_inverse(NUM_SERVERS as i32, Q);
 
@@ -382,7 +413,11 @@ pub fn servers_auth_init_and_prep_eval(
         let mut r_e_c1_tmp = [0i32; NUM_SERVERS];
         let mut r_e_c2_tmp = [0i32; NUM_SERVERS];
 
-        r1_vec_u8.fill(0);
+        //r1_vec_u8.fill(0);
+        for i in 0..r1_vec_u8.len() {
+            r1_vec_u8[i] = 0;
+        }
+
         gen_r1_vec_sub(&r1_seed, &mut r1_vec_u8[..], a_i);
         let r1_vec: &mut [i32] = bytemuck::cast_slice_mut(&mut r1_vec_u8);
 
@@ -391,7 +426,11 @@ pub fn servers_auth_init_and_prep_eval(
         let mut server_c1_eval_tmp = [0i32; NUM_SERVERS];
         let mut server_c2_eval_tmp = [0i32; NUM_SERVERS];
 
-        table_sub.fill(0);
+        //table_sub.fill(0);
+        for i in 0..table_sub.len() {
+            table_sub[i] = 0;
+        }
+
         dpf_eval_lwe_block_new_all_sub(
             a_i,
             &mut table_sub,
@@ -435,9 +474,18 @@ pub fn servers_auth_init_and_prep_eval(
 
         // Eval code
         for eval_s_iter in 1..NUM_SERVERS {
-            table_sub.fill(0);
-            b_vecs_1d_u8_eval.fill(0);
-            s_vecs_1d_u8_eval.fill(0);
+            //table_sub.fill(0);
+            //b_vecs_1d_u8_eval.fill(0);
+            //s_vecs_1d_u8_eval.fill(0);
+            for i in 0..table_sub.len() {
+                table_sub[i] = 0;
+            }
+            for i in 0..b_vecs_1d_u8_eval.len() {
+                b_vecs_1d_u8_eval[i] = 0;
+            }
+            for i in 0..s_vecs_1d_u8_eval.len() {
+                s_vecs_1d_u8_eval[i] = 0;
+            }
 
             dpf_eval_lwe_seed_block_all_sub(
                 a_i,
@@ -472,6 +520,8 @@ pub fn servers_auth_init_and_prep_eval(
         }
     }
 
+    let total_duration = start.elapsed();
+    println!("SAIaPE Total Time elapsed is: {:?}", total_duration);
     return (
         inv_servers,
         r_c0_eval,
