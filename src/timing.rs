@@ -1,5 +1,5 @@
 use crate::auth::{client_post_gen, gen_beaver_triples, gen_beaver_triples2, set_up_init_vars};
-use crate::dpf::{dpf_eval_lwe_block_new_all_sub, dpf_eval_lwe_block_new_all_sub_timing, dpf_eval_lwe_seed_block_all_sub, dpf_eval_lwe_seed_block_all_sub_timing, dpf_eval_lwe_seed_block_get_bs, dpf_gen_lwe_seed_block_new_sq_compact_veri, fill_rand_aes128_modq, fill_rand_aes128_modq_nr_3_by_seed, fill_rand_aes128_modq_nr_6_by_seed, fill_rand_aes128_nr};
+use crate::dpf::{dpf_eval_lwe_block_new, dpf_eval_lwe_block_new_all_sub, dpf_eval_lwe_block_new_all_sub_timing, dpf_eval_lwe_seed_block, dpf_eval_lwe_seed_block_all_sub, dpf_eval_lwe_seed_block_all_sub_timing, dpf_eval_lwe_seed_block_get_bs, dpf_gen_lwe_seed_block_new_sq_compact_veri, fill_rand_aes128_modq, fill_rand_aes128_modq_nr_3_by_seed, fill_rand_aes128_modq_nr_6_by_seed, fill_rand_aes128_nr};
 use crate::ntt::{barrett_reduce, mul_mod_mont};
 use crate::params::{
     BT_INST1, BT_INST2_A, BT_INST2_B, E_BYTES, NOISE_BITS, NOISE_LEN, NUM_BLOCK, NUM_SERVERS,
@@ -164,12 +164,14 @@ pub fn client_post_gen_timing_numblock(
     correction_pt2b: &mut [i32],
 ) {
     // separates the noise bits
+    //for i in 0..NUM_BLOCK {
     for i in 0..1 {
         separate_bits_single_block(&noise_i32, server_noise_bits);
     }
     let mut rand_seed = vec![0u8; SEED_IV_LEN];
 
 
+    //for i in 0..NUM_BLOCK {
     for i in 0..1 {
         gen_beaver_triples(
             &rand_seed,
@@ -811,6 +813,50 @@ pub fn dpf_eval_eval_all_from_seed_timings(eval_iterations: usize) {
     );
 }
 
+// The computation of the DPF Eval single for the (n-1) servers that have seeds
+pub fn dpf_eval_single_seed_timings(eval_iterations: usize) {
+    // Setup of variables
+    let a_vec = vec![0i32; NUM_BLOCK * N_PARAM];
+
+    let v_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+
+    let seeds = [0u8; SEED_IV_LEN * (2 - 1)];
+
+    let mut recovered_message_t: i32 = 0;
+    let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * 1];
+
+    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    let eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        // Servers compute this
+
+        for a_i in 0..1 {
+            // Eval code
+            // for eval_s_iter in 1..NUM_SERVERS {
+            for eval_s_iter in 0..1 {
+                dpf_eval_lwe_seed_block(
+                    a_i,
+                    &mut recovered_message_t,
+                    &a_vec,
+                    &mut b_vecs_1d_u8_eval[..],
+                    &mut s_vecs_1d_u8_eval[..],
+                    &seeds[32 * (eval_s_iter)..32 * (eval_s_iter + 1)],
+                    &v_vec_u8,
+                );
+            }
+        }
+    }
+    //let gen_duration = gen_start.elapsed().as_micros();
+    let eval_duration = eval_start.elapsed();
+    println!(
+        "EVAL eval_single_from_seed Time elapsed is: {:?}",
+        eval_duration
+    );
+}
+
 // The computation of the DPF Eval all for the single server that has the correction words
 pub fn dpf_eval_eval_all_from_block_timings(eval_iterations: usize) {
     // Setup of variables
@@ -845,6 +891,44 @@ pub fn dpf_eval_eval_all_from_block_timings(eval_iterations: usize) {
     let eval_duration = eval_start.elapsed();
     println!(
         "EVAL eval_all_from_block (mul N_PARAM) Time elapsed is: {:?}",
+        eval_duration
+    );
+}
+
+// The computation of the DPF Eval all for the single server that has the correction words
+pub fn dpf_eval_single_block_timings(eval_iterations: usize) {
+    // Setup of variables
+    let a_vec = vec![0i32; NUM_BLOCK * N_PARAM];
+
+    let b_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM];
+    let s_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+    let v_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+
+    let mut recovered_message_t: i32 = 0;
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    let eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        // Servers compute this
+        //Compute beaver triples
+
+        for a_i in 0..1 {
+            dpf_eval_lwe_block_new(
+                a_i,
+                &mut recovered_message_t,
+                &a_vec,
+                &b_vec_1d_u8[..],
+                &s_vec_1d_u8[..],
+                &v_vec_u8,
+            );
+        }
+    }
+
+    //let gen_duration = gen_start.elapsed().as_micros();
+    let eval_duration = eval_start.elapsed();
+    println!(
+        "EVAL eval_single_from_block Time elapsed is: {:?}",
         eval_duration
     );
 }

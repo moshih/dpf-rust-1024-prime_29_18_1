@@ -286,6 +286,23 @@ fn block_sq_compact_snip_timings_server(
 
     println!("----------------------------------------------------");
 }
+
+// moshih
+fn server_eval_single(
+    eval: usize,
+    wait_time: u64,
+) {
+    println!("----------------------------------------------------");
+    println!("(just) Eval compat block Timing");
+
+    println!("eval_single_iterations: {}", eval);
+
+    dpf_eval_single_seed_timings(eval);
+    thread::sleep(time::Duration::from_secs(wait_time));
+    dpf_eval_single_block_timings(eval);
+    println!("----------------------------------------------------");
+}
+
 fn main_authtiming() {
     println!("num servers: {}", NUM_SERVERS);
     println!("N_PARAM: {}", N_PARAM);
@@ -315,6 +332,7 @@ fn main_authtiming() {
 
     let s_iterations: usize = 1;
     let eval_all: usize = 1;
+    let eval: usize = 1;
 
     let wait_time: u64 = 1;
 
@@ -322,6 +340,8 @@ fn main_authtiming() {
     block_compact_auth_timings_client(iterations, bscale, ascale, wait_time);
     thread::sleep(time::Duration::from_secs(wait_time));
     block_sq_compact_snip_timings_server(s_iterations, escale, eval_all, wait_time);
+    thread::sleep(time::Duration::from_secs(wait_time));
+    server_eval_single(eval, wait_time);
 
     let duration = start.elapsed();
     println!("Total Time elapsed is: {:?}", duration)
@@ -426,8 +446,8 @@ fn main() {
     //main_block_sq_new_compact_correctness();
 
     // Checks that Auth DPF Passes
-    main_check_correctness();
+    //main_check_correctness();
 
     // Auth Timings
-    //main_authtiming();
+    main_authtiming();
 }

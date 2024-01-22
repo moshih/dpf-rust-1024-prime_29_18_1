@@ -377,6 +377,7 @@ pub fn servers_auth_init_and_prep_eval(
         c_bt[(NUM_SERVERS - 1) * BT_INST1 + i] = correction_pt1[i];
     }
 
+
     // step 2. c: Computing the error shares by multiplying bits by gadget
     let mut server_noise = vec![0i32; NUM_SERVERS * NOISE_LEN];
     for s_iter in 0..NUM_SERVERS {
@@ -520,8 +521,6 @@ pub fn servers_auth_init_and_prep_eval(
         }
     }
 
-    let total_duration = start.elapsed();
-    println!("SAIaPE Total Time elapsed is: {:?}", total_duration);
     return (
         inv_servers,
         r_c0_eval,
