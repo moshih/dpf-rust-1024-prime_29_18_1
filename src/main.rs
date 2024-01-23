@@ -337,6 +337,8 @@ fn main_authtiming() {
     let wait_time: u64 = 1;
 
     thread::sleep(time::Duration::from_secs(wait_time));
+    block_compact_timings_client(iterations);
+    thread::sleep(time::Duration::from_secs(wait_time));
     block_compact_auth_timings_client(iterations, bscale, ascale, wait_time);
     thread::sleep(time::Duration::from_secs(wait_time));
     block_sq_compact_snip_timings_server(s_iterations, escale, eval_all, wait_time);

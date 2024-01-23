@@ -1,5 +1,5 @@
 use crate::auth::{client_post_gen, gen_beaver_triples, gen_beaver_triples2, set_up_init_vars};
-use crate::dpf::{dpf_eval_lwe_block_new, dpf_eval_lwe_block_new_all_sub, dpf_eval_lwe_block_new_all_sub_timing, dpf_eval_lwe_seed_block, dpf_eval_lwe_seed_block_all_sub, dpf_eval_lwe_seed_block_all_sub_timing, dpf_eval_lwe_seed_block_get_bs, dpf_gen_lwe_seed_block_new_sq_compact_veri, fill_rand_aes128_modq, fill_rand_aes128_modq_nr_3_by_seed, fill_rand_aes128_modq_nr_6_by_seed, fill_rand_aes128_nr};
+use crate::dpf::{dpf_eval_lwe_block_new, dpf_eval_lwe_block_new_all_sub, dpf_eval_lwe_block_new_all_sub_timing, dpf_eval_lwe_seed_block, dpf_eval_lwe_seed_block_all_sub, dpf_eval_lwe_seed_block_all_sub_timing, dpf_eval_lwe_seed_block_get_bs, dpf_gen_lwe_seed_block_new_sq_compact, dpf_gen_lwe_seed_block_new_sq_compact_veri, fill_rand_aes128_modq, fill_rand_aes128_modq_nr_3_by_seed, fill_rand_aes128_modq_nr_6_by_seed, fill_rand_aes128_nr};
 use crate::ntt::{barrett_reduce, mul_mod_mont};
 use crate::params::{
     BT_INST1, BT_INST2_A, BT_INST2_B, E_BYTES, NOISE_BITS, NOISE_LEN, NUM_BLOCK, NUM_SERVERS,
@@ -241,6 +241,55 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_snip_aftergen_timings(gen_iteration
     }
     let gen_duration_num_block = gen_start_num_block.elapsed();
     println!("seed_compact AFTER GEN Time numblock elapsed is: {:?}", gen_duration_num_block);
+}
+
+// The computation of the DPF Eval single for the (n-1) servers that have seeds
+pub fn block_compact_timings_client(iterations: usize) {
+    // Setup of variables
+    let buffer: i32 = 128;
+    let ori_message: i32 = 101;
+    let message: i32 = (ori_message << 9) + buffer;
+    let index: usize = 0; //2*512*512+13;//2000;
+
+    let (
+        mut b_vec_1d_u8,
+        mut s_vec_1d_u8,
+        mut v_vec_u8,
+        _noise_i32,
+        _noise_sign_i8,
+        a_vec,
+        mut seeds,
+        _coeff_seeds,
+        _message,
+        _index,
+    ) = set_up_init_vars(buffer, ori_message, index);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    let eval_start = Instant::now();
+    for _iter_test in 0..iterations {
+        // Servers compute this
+
+        for a_i in 0..1 {
+            // Eval code
+            // for eval_s_iter in 1..NUM_SERVERS {
+            dpf_gen_lwe_seed_block_new_sq_compact(
+                a_i,
+                message,
+                &a_vec[..],
+                &mut b_vec_1d_u8[..],
+                &mut s_vec_1d_u8[..],
+                &mut v_vec_u8[..],
+                &mut seeds[..],
+            );
+        }
+    }
+    //let gen_duration = gen_start.elapsed().as_micros();
+    let eval_duration = eval_start.elapsed();
+    println!(
+        "seed_compact (no auth or prep) GEN Time elapsed is:  is: {:?}",
+        eval_duration
+    );
 }
 
 // "compact" because (n-1) servers will get seeds to expand on for the majority of the data sents
