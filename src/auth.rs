@@ -444,7 +444,7 @@ pub fn servers_auth_init_and_prep_eval(
 
     let mut table_sub = vec![0i32; N_BLOCKS];
     let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * B_SLICE * NUM_SERVERS];
-    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * S_SLICE];
+    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM];
 
     for a_i in 0..N_ROWS {
         let mut r_e_c0_tmp = [0i32; NUM_SERVERS];
@@ -526,6 +526,7 @@ pub fn servers_auth_init_and_prep_eval(
             for i in 0..s_vecs_1d_u8_eval.len() {
                 s_vecs_1d_u8_eval[i] = 0;
             }
+
 
             dpf_eval_lwe_seed_block_all_sub(
                 a_i,
@@ -630,7 +631,11 @@ pub fn servers_auth_init_and_prep_eval_single_blocks(
 
 pub fn servers_auth_init_and_prep_eval_single_server_nrows(
     noise_sign_i8: &mut Vec<i8>,
-) -> (Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, [u8; 32], [u8; 32]) {
+    r1_vec_u8: &mut Vec<u8>,
+    t_c0_alpha: &mut Vec<i32>,
+    t_c1_alpha: &mut Vec<i32>,
+    t_c2_alpha: &mut Vec<i32>,
+) -> (Vec<i32>, Vec<i32>, Vec<i32>, [u8; 32], [u8; 32]) {
     // Servers compute this
     //Compute beaver triples
 
@@ -643,11 +648,6 @@ pub fn servers_auth_init_and_prep_eval_single_server_nrows(
     let mut r3_seed = [0u8; SEED_IV_LEN];
 
 
-    let mut t_c0_alpha = vec![0i32; 1 * B_SLICE];
-    let mut t_c1_alpha = vec![0i32; 1 * B_SLICE];
-    let mut t_c2_alpha = vec![0i32; 1 * B_SLICE];
-
-    let mut r1_vec_u8 = vec![0u8; E_BYTES * NOISE_LEN];
 
     // calculating eval part
     let mut r_c0_eval = vec![0i32; 1];
@@ -666,7 +666,7 @@ pub fn servers_auth_init_and_prep_eval_single_server_nrows(
         }
 
         gen_r1_vec_sub(&r1_seed, &mut r1_vec_u8[..], a_i);
-        let r1_vec: &mut [i32] = bytemuck::cast_slice_mut(&mut r1_vec_u8);
+        let r1_vec: &mut [i32] = bytemuck::cast_slice_mut(r1_vec_u8);
 
         // Eval code
         let mut server_c0_eval_tmp = [0i32; 1];
@@ -717,9 +717,6 @@ pub fn servers_auth_init_and_prep_eval_single_server_nrows(
         r_c0_eval,
         r_c1_eval,
         r_c2_eval,
-        t_c0_alpha,
-        t_c1_alpha,
-        t_c2_alpha,
         r2_seed,
         r3_seed,
     );

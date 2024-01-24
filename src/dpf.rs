@@ -2730,13 +2730,14 @@ pub fn dpf_eval_lwe_seed_block_all_sub(
                 s_vec_1d_u8[i] = 0;
             }
 
+            // moshih
             fill_rand_aes128_modq_nr_2_by_seed_sq_getsub(
                 &seed[0..16],
                 &seed[16..32],
                 b_vec_u8,
                 s_vec_1d_u8,
                 E_BYTES * B_SLICE,
-                E_BYTES * S_SLICE,
+                E_BYTES * N_PARAM,
                 block_lx,
                 N_ROWS,
             );
@@ -2811,6 +2812,7 @@ pub fn dpf_eval_lwe_seed_block_all_sub_timing(
 
             //b_vec_u8.fill(0);
             //s_vec_1d_u8.fill(0);
+
             for i in 0..b_vec_u8.len() {
                 b_vec_u8[i] = 0;
             }
@@ -2818,17 +2820,17 @@ pub fn dpf_eval_lwe_seed_block_all_sub_timing(
                 s_vec_1d_u8[i] = 0;
             }
 
+            // todo: reimp
             fill_rand_aes128_modq_nr_2_by_seed_sq_getsub(
                 &seed[0..16],
                 &seed[16..32],
                 b_vec_u8,
                 s_vec_1d_u8,
                 E_BYTES * B_SLICE,
-                E_BYTES * S_SLICE,
+                E_BYTES * N_PARAM,
                 block_lx,
                 N_ROWS,
             );
-
 
             dpf_eval_lwe_base_one_sq_whole_poly(
                 block_l,

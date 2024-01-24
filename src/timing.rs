@@ -1171,6 +1171,11 @@ pub fn dpf_eval_every_server_timings_p1(eval_iterations: usize) {
     let mut a_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
     let mut b_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
     let mut c_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
+
+    let mut r1_vec_u8 = vec![0u8; E_BYTES * NOISE_LEN];
+    let mut t_c0_alpha = vec![0i32; 1 * B_SLICE];
+    let mut t_c1_alpha = vec![0i32; 1 * B_SLICE];
+    let mut t_c2_alpha = vec![0i32; 1 * B_SLICE];
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
     let single_eval_start = Instant::now();
@@ -1185,7 +1190,7 @@ pub fn dpf_eval_every_server_timings_p1(eval_iterations: usize) {
     let blocks_eval_duration = blocks_eval_start.elapsed();
     let rows_eval_start = Instant::now();
     for _iter_test in 0..eval_iterations {
-        servers_auth_init_and_prep_eval_single_server_nrows(&mut noise_sign_i8);
+        servers_auth_init_and_prep_eval_single_server_nrows(&mut noise_sign_i8, &mut r1_vec_u8, &mut t_c0_alpha, &mut t_c1_alpha, &mut t_c2_alpha);
     }
     let rows_eval_duration = rows_eval_start.elapsed();
     println!("dpf_eval_every_server_timings_p1 S:{:?} B:{:?} R:{:?} = {:?} ",single_eval_duration, blocks_eval_duration, rows_eval_duration, single_eval_duration + blocks_eval_duration*BLOCKS as u32 + rows_eval_duration*N_ROWS as u32);
@@ -1386,7 +1391,7 @@ pub fn dpf_eval_short_server_timings(eval_iterations: usize) {
         // Servers compute this
 
         // N_ROWS
-        for _a_i in 0..1 {
+        for _a_i in 0..N_ROWS {
             let r1_vec: &mut [i32] = bytemuck::cast_slice_mut(&mut r1_vec_u8);
             //r1_vec.fill(2);
 
@@ -1436,7 +1441,7 @@ pub fn dpf_eval_short_server_timings(eval_iterations: usize) {
     }
     //let gen_duration = gen_start.elapsed().as_micros();
     let eval_duration = eval_start.elapsed();
-    println!("EVAL short server (got mul by N_ROWS {:?})Time elapsed is: {:?}", eval_duration, eval_duration* N_ROWS as u32);
+    println!("EVAL short server Time elapsed is: {:?}", eval_duration);
 }
 
 // The computation of the DPF Eval all for the (n-1) servers that have seeds
@@ -1451,7 +1456,7 @@ pub fn dpf_eval_eval_all_from_seed_timings(eval_iterations: usize) {
     let mut table_sub = vec![0i32; N_BLOCKS];
     let mut b_vecs_1d_u8_eval = vec![0u8; B_SLICE_BYTES];
 
-    let mut s_vecs_1d_u8_eval = vec![0u8; S_SLICE_BYTES];
+    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES*N_PARAM];
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1460,7 +1465,7 @@ pub fn dpf_eval_eval_all_from_seed_timings(eval_iterations: usize) {
         // Servers compute this
 
         // N_ROWS, can be reduced by BLOCKS too
-        for a_i in 0..1 {
+        for a_i in 0..N_ROWS {
             // Eval code
             // for eval_s_iter in 1..NUM_SERVERS {
             for eval_s_iter in 1..2 {
@@ -1481,7 +1486,7 @@ pub fn dpf_eval_eval_all_from_seed_timings(eval_iterations: usize) {
     println!(
         "EVAL eval_all_from_seed (got mul N_ROWS: {:?}) Time elapsed is: {:?}",
         eval_duration,
-        eval_duration* N_ROWS as u32
+        eval_duration* 1 as u32
     );
 }
 

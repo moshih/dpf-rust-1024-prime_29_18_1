@@ -190,7 +190,8 @@ fn main_param_block() {
         N_PARAM, Q
     );
     println!("sqrt array = {}", N_PARAM);
-    println!("expansion factor is = {}", NUM_BLOCK);
+    println!("BLOCKS is = {}", BLOCKS);
+    println!("ROWS is = {}", ROWS);
     println!("num servers: {}", NUM_SERVERS);
 
     // check fill_rand_aes128_modq_nr_2_by_seed
@@ -263,7 +264,6 @@ fn main_param_block() {
 
 fn block_sq_compact_snip_timings_server(
     iterations: usize,
-    escale: usize,
     eval_all: usize,
     wait_time: u64,
 ) {
@@ -272,10 +272,8 @@ fn block_sq_compact_snip_timings_server(
 
     //let iterations:usize = 1;
     let eval_iterations: usize = iterations;
-    let eval_iterations_nparam: usize = escale * iterations;
 
     println!("eval_iterations: {}", eval_iterations);
-    println!("eval_iterations_nparam: {}", eval_iterations_nparam);
     println!("eval_all_from_seed iterations: {}", eval_all);
 
     //dpf_eval_every_server_timings_single(eval_iterations);
@@ -341,7 +339,6 @@ fn main_authtiming() {
     let iterations: usize = 1;
     let bscale: usize = 1;
     let ascale: usize = 1;
-    let escale: usize = 1;
 
     let s_iterations: usize = 1;
     let eval_all: usize = 1;
@@ -354,7 +351,7 @@ fn main_authtiming() {
     thread::sleep(time::Duration::from_secs(wait_time));
     block_compact_auth_timings_client(iterations, bscale, ascale, wait_time);
     thread::sleep(time::Duration::from_secs(wait_time));
-    block_sq_compact_snip_timings_server(s_iterations, escale, eval_all, wait_time);
+    block_sq_compact_snip_timings_server(s_iterations, eval_all, wait_time);
     thread::sleep(time::Duration::from_secs(wait_time));
     server_eval_single(eval, wait_time);
 

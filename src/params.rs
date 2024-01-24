@@ -1,9 +1,9 @@
 pub const NUM_SERVERS: usize = 3;
 pub const N_PARAM: usize = 1024;
 
-pub const ROWS: usize = 4;
+pub const ROWS: usize = 2;
 pub const N_ROWS: usize = N_PARAM*ROWS;
-pub const BLOCKS: usize = 8;
+pub const BLOCKS: usize = 2;
 pub const N_BLOCKS: usize = N_PARAM*BLOCKS;
 pub const N_PARAM_LOG2: usize = 10;
 pub const DB_SIZE: usize = N_PARAM * N_PARAM * ROWS*BLOCKS;
