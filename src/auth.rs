@@ -7,11 +7,9 @@ use crate::dpf::{
     fill_rand_aes128_modq_nr_6_by_seed, fill_rand_aes128_nr,
 };
 use crate::ntt::{barrett_reduce, mul_mod_mont};
-use crate::params::{BT_INST1, BT_INST2_A, BT_INST2_B, E_BYTES, NOISE_BITS, NOISE_LEN, NUM_BLOCK, NUM_SERVERS, N_PARAM, Q, SEED_IV_LEN, BLOCKS, A_SLICE, B_SLICE, N_BLOCKS, S_SLICE, N_ROWS, B_SLICE_BYTES, S_SLICE_BYTES, V_SLICE_BYTES};
-use crate::snip::{
-    combine_bits, gen_r1_vec_sub, gen_r2_vec_sub, gen_r3_vec_sub, get_rand_coeff_seeds,
-    mod_inverse, mul_shares_p2, separate_bits,
-};
+use crate::params::{BT_INST1, BT_INST2_A, BT_INST2_B, E_BYTES, NOISE_BITS, NOISE_LEN, NUM_BLOCK, NUM_SERVERS, N_PARAM, Q, SEED_IV_LEN, BLOCKS, A_SLICE, B_SLICE, N_BLOCKS, S_SLICE, N_ROWS, B_SLICE_BYTES, S_SLICE_BYTES, V_SLICE_BYTES, ROWS};
+use crate::snip::{combine_bits, combine_bits_blocks, gen_r1_vec_sub, gen_r2_vec_sub, gen_r3_vec_sub, get_rand_coeff_seeds, mod_inverse, mul_shares_p2, separate_bits};
+use crate::timing::run_beaver_triple_timing;
 
 pub fn set_up_init_vars(
     buffer: i32,
@@ -275,6 +273,48 @@ pub fn run_beaver_triple(
     }
 }
 
+pub fn run_beaver_triple_single(
+    y_shares: &[i32],
+    z_shares: &[i32],
+    yz_shares: &mut [i32],
+    a_shares: &[i32],
+    b_shares: &[i32],
+    c_shares: &[i32],
+    rounds: usize,
+    instances: usize,
+    inv_servers: i32,
+) {
+    let mut d_shares = [0i32; NUM_SERVERS];
+    let mut e_shares = [0i32; NUM_SERVERS];
+
+    let mut d: i32;
+    let mut e: i32;
+
+    for round_i in 0..rounds {
+        d = 0;
+        e = 0;
+
+        for i in 0..1 {
+            d_shares[i] = barrett_reduce(y_shares[i * rounds + round_i] - a_shares[i * instances]);
+            e_shares[i] = barrett_reduce(z_shares[i * rounds + round_i] - b_shares[i * instances]);
+
+            d = barrett_reduce(d + d_shares[i]);
+            e = barrett_reduce(e + e_shares[i]);
+        }
+
+        for iter in 0..1 {
+            yz_shares[iter * rounds + round_i] = mul_shares_p2(
+                d,
+                e,
+                a_shares[iter * instances],
+                b_shares[iter * instances],
+                c_shares[iter * instances],
+                inv_servers,
+            );
+        }
+    }
+}
+
 pub fn client_post_gen(
     noise_i32: &[i32],
     server_noise_bits: &mut [u32],
@@ -498,15 +538,15 @@ pub fn servers_auth_init_and_prep_eval(
             );
 
             for b_i in 0..N_BLOCKS {
-                    server_c0_eval_tmp[eval_s_iter] =
-                        barrett_reduce(server_c0_eval_tmp[eval_s_iter] + table_sub[b_i]);
-                    let mut temp_eval: i32 = barrett_reduce(mul_mod_mont(table_sub[b_i], r1_vec[b_i]));
-                    server_c1_eval_tmp[eval_s_iter] =
-                        barrett_reduce(server_c1_eval_tmp[eval_s_iter] + temp_eval);
+                server_c0_eval_tmp[eval_s_iter] =
+                    barrett_reduce(server_c0_eval_tmp[eval_s_iter] + table_sub[b_i]);
+                let mut temp_eval: i32 = barrett_reduce(mul_mod_mont(table_sub[b_i], r1_vec[b_i]));
+                server_c1_eval_tmp[eval_s_iter] =
+                    barrett_reduce(server_c1_eval_tmp[eval_s_iter] + temp_eval);
 
-                    temp_eval = barrett_reduce(mul_mod_mont(temp_eval, r1_vec[b_i]));
-                    server_c2_eval_tmp[eval_s_iter] =
-                        barrett_reduce(server_c2_eval_tmp[eval_s_iter] + temp_eval)
+                temp_eval = barrett_reduce(mul_mod_mont(temp_eval, r1_vec[b_i]));
+                server_c2_eval_tmp[eval_s_iter] =
+                    barrett_reduce(server_c2_eval_tmp[eval_s_iter] + temp_eval)
             }
         }
 
@@ -532,6 +572,279 @@ pub fn servers_auth_init_and_prep_eval(
         r3_seed,
     );
 }
+
+pub fn servers_auth_init_and_prep_eval_single_server(
+    bt_seeds_pt1: &Vec<u8>,
+    coeff_seeds: &Vec<u8>,
+    a_bt_u8: &mut Vec<u8>,
+    b_bt_u8: &mut Vec<u8>,
+    c_bt_u8: &mut Vec<u8>,
+) -> ([u8; 32], [u8; 32]) {
+    // Servers compute this
+    //Compute beaver triples
+    for s_i in 0..1 {
+        fill_rand_aes128_modq_nr_3_by_seed(
+            &bt_seeds_pt1[s_i * SEED_IV_LEN..s_i * SEED_IV_LEN + 16],
+            &bt_seeds_pt1[s_i * SEED_IV_LEN + 16..s_i * SEED_IV_LEN + 32],
+            &mut a_bt_u8[s_i * E_BYTES * BT_INST1..(s_i + 1) * E_BYTES * BT_INST1],
+            &mut b_bt_u8[s_i * E_BYTES * BT_INST1..(s_i + 1) * E_BYTES * BT_INST1],
+            &mut c_bt_u8[s_i * E_BYTES * BT_INST1..(s_i + 1) * E_BYTES * BT_INST1],
+            E_BYTES * BT_INST1,
+            E_BYTES * BT_INST1,
+            E_BYTES * BT_INST1,
+        );
+    }
+
+
+    // step 2. d: Verify shares add to point function
+    let mut r1_seed = [0u8; SEED_IV_LEN];
+    let mut r2_seed = [0u8; SEED_IV_LEN];
+    let mut r3_seed = [0u8; SEED_IV_LEN];
+    get_rand_coeff_seeds(&coeff_seeds, &mut r1_seed, &mut r2_seed, &mut r3_seed);
+
+
+        return (
+            r2_seed,
+            r3_seed,
+        );
+}
+
+pub fn servers_auth_init_and_prep_eval_single_blocks(
+    server_noise_bits: &Vec<u32>,
+) {
+    // Servers compute this
+    //Compute beaver triples
+
+    let mut server_noise = vec![0i32; 1 * NOISE_LEN];
+
+    // step 2. c: Computing the error shares by multiplying bits by gadget
+    let mut server_noise = vec![0i32; 1 * NOISE_LEN];
+    for s_iter in 0..1 {
+        combine_bits_blocks(
+            &server_noise_bits
+                [s_iter * NOISE_LEN/BLOCKS * NOISE_BITS..(s_iter + 1) * NOISE_LEN/BLOCKS * NOISE_BITS],
+            &mut server_noise[s_iter * NOISE_LEN/BLOCKS..(s_iter + 1) * NOISE_LEN/BLOCKS],
+        );
+    }
+}
+
+pub fn servers_auth_init_and_prep_eval_single_server_nrows(
+    noise_sign_i8: &mut Vec<i8>,
+) -> (Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, [u8; 32], [u8; 32]) {
+    // Servers compute this
+    //Compute beaver triples
+
+    let mut server_noise = vec![0i32; 1 * NOISE_LEN];
+
+
+    // step 2. d: Verify shares add to point function
+    let mut r1_seed = [0u8; SEED_IV_LEN];
+    let mut r2_seed = [0u8; SEED_IV_LEN];
+    let mut r3_seed = [0u8; SEED_IV_LEN];
+
+
+    let mut t_c0_alpha = vec![0i32; 1 * B_SLICE];
+    let mut t_c1_alpha = vec![0i32; 1 * B_SLICE];
+    let mut t_c2_alpha = vec![0i32; 1 * B_SLICE];
+
+    let mut r1_vec_u8 = vec![0u8; E_BYTES * NOISE_LEN];
+
+    // calculating eval part
+    let mut r_c0_eval = vec![0i32; 1];
+    let mut r_c1_eval = vec![0i32; 1];
+    let mut r_c2_eval = vec![0i32; 1];
+
+    // N_ROWS
+    for a_i in 0..1 {
+        let mut r_e_c0_tmp = [0i32; 1];
+        let mut r_e_c1_tmp = [0i32; 1];
+        let mut r_e_c2_tmp = [0i32; 1];
+
+        //r1_vec_u8.fill(0);
+        for i in 0..r1_vec_u8.len() {
+            r1_vec_u8[i] = 0;
+        }
+
+        gen_r1_vec_sub(&r1_seed, &mut r1_vec_u8[..], a_i);
+        let r1_vec: &mut [i32] = bytemuck::cast_slice_mut(&mut r1_vec_u8);
+
+        // Eval code
+        let mut server_c0_eval_tmp = [0i32; 1];
+        let mut server_c1_eval_tmp = [0i32; 1];
+        let mut server_c2_eval_tmp = [0i32; 1];
+
+
+        for b_i in 0..NOISE_LEN {
+            for server_i in 0..1 {
+                r_e_c0_tmp[server_i] = barrett_reduce(
+                    server_noise[server_i * NOISE_LEN + b_i] * (noise_sign_i8[b_i] as i32)
+                        + r_e_c0_tmp[server_i],
+                );
+
+                let mut temp: i32 = barrett_reduce(mul_mod_mont(
+                    server_noise[server_i * NOISE_LEN + b_i] * (noise_sign_i8[b_i] as i32),
+                    r1_vec[b_i],
+                ));
+                r_e_c1_tmp[server_i] = barrett_reduce(temp + r_e_c1_tmp[server_i]);
+
+                temp = barrett_reduce(mul_mod_mont(temp, r1_vec[b_i]));
+                r_e_c2_tmp[server_i] = barrett_reduce(temp + r_e_c2_tmp[server_i]);
+            }
+
+        }
+
+        for server_i in 0..1 {
+            t_c0_alpha[B_SLICE * server_i + a_i] = r_e_c0_tmp[server_i];
+            t_c1_alpha[B_SLICE * server_i + a_i] = r_e_c1_tmp[server_i];
+            t_c2_alpha[B_SLICE * server_i + a_i] = r_e_c2_tmp[server_i];
+        }
+
+        // Eval code
+
+
+        for server_i in 0..1 {
+            r_c0_eval[server_i] =
+                barrett_reduce(r_c0_eval[server_i] + server_c0_eval_tmp[server_i]);
+            r_c1_eval[server_i] =
+                barrett_reduce(r_c1_eval[server_i] + server_c1_eval_tmp[server_i]);
+            r_c2_eval[server_i] =
+                barrett_reduce(r_c2_eval[server_i] + server_c2_eval_tmp[server_i]);
+        }
+    }
+
+
+    return (
+        r_c0_eval,
+        r_c1_eval,
+        r_c2_eval,
+        t_c0_alpha,
+        t_c1_alpha,
+        t_c2_alpha,
+        r2_seed,
+        r3_seed,
+    );
+}
+
+pub fn servers_auth_init_and_prep_eval_single_server_single(
+    bt_seeds_pt1: &Vec<u8>,
+    server_noise_bits: &Vec<u32>,
+    coeff_seeds: &Vec<u8>,
+    noise_sign_i8: &mut Vec<i8>,
+    a_bt_u8: &mut Vec<u8>,
+    b_bt_u8: &mut Vec<u8>,
+    c_bt_u8: &mut Vec<u8>,
+) -> (Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, Vec<i32>, [u8; 32], [u8; 32]) {
+    // Servers compute this
+    //Compute beaver triples
+    for s_i in 0..1 {
+        fill_rand_aes128_modq_nr_3_by_seed(
+            &bt_seeds_pt1[s_i * SEED_IV_LEN..s_i * SEED_IV_LEN + 16],
+            &bt_seeds_pt1[s_i * SEED_IV_LEN + 16..s_i * SEED_IV_LEN + 32],
+            &mut a_bt_u8[s_i * E_BYTES * BT_INST1..(s_i + 1) * E_BYTES * BT_INST1],
+            &mut b_bt_u8[s_i * E_BYTES * BT_INST1..(s_i + 1) * E_BYTES * BT_INST1],
+            &mut c_bt_u8[s_i * E_BYTES * BT_INST1..(s_i + 1) * E_BYTES * BT_INST1],
+            E_BYTES * BT_INST1,
+            E_BYTES * BT_INST1,
+            E_BYTES * BT_INST1,
+        );
+    }
+
+    // step 2. c: Computing the error shares by multiplying bits by gadget
+    let mut server_noise = vec![0i32; 1 * NOISE_LEN];
+    for s_iter in 0..1 {
+        combine_bits(
+            &server_noise_bits
+                [s_iter * NOISE_LEN * NOISE_BITS..(s_iter + 1) * NOISE_LEN * NOISE_BITS],
+            &mut server_noise[s_iter * NOISE_LEN..(s_iter + 1) * NOISE_LEN],
+        );
+    }
+
+    // step 2. d: Verify shares add to point function
+    let mut r1_seed = [0u8; SEED_IV_LEN];
+    let mut r2_seed = [0u8; SEED_IV_LEN];
+    let mut r3_seed = [0u8; SEED_IV_LEN];
+    get_rand_coeff_seeds(&coeff_seeds, &mut r1_seed, &mut r2_seed, &mut r3_seed);
+
+    let mut t_c0_alpha = vec![0i32; 1 * B_SLICE];
+    let mut t_c1_alpha = vec![0i32; 1 * B_SLICE];
+    let mut t_c2_alpha = vec![0i32; 1 * B_SLICE];
+
+    let mut r1_vec_u8 = vec![0u8; E_BYTES * NOISE_LEN];
+
+    // calculating eval part
+    let mut r_c0_eval = vec![0i32; 1];
+    let mut r_c1_eval = vec![0i32; 1];
+    let mut r_c2_eval = vec![0i32; 1];
+
+    for a_i in 0..N_ROWS {
+        let mut r_e_c0_tmp = [0i32; 1];
+        let mut r_e_c1_tmp = [0i32; 1];
+        let mut r_e_c2_tmp = [0i32; 1];
+
+        //r1_vec_u8.fill(0);
+        for i in 0..r1_vec_u8.len() {
+            r1_vec_u8[i] = 0;
+        }
+
+        gen_r1_vec_sub(&r1_seed, &mut r1_vec_u8[..], a_i);
+        let r1_vec: &mut [i32] = bytemuck::cast_slice_mut(&mut r1_vec_u8);
+
+        // Eval code
+        let mut server_c0_eval_tmp = [0i32; 1];
+        let mut server_c1_eval_tmp = [0i32; 1];
+        let mut server_c2_eval_tmp = [0i32; 1];
+
+
+        for b_i in 0..NOISE_LEN {
+            for server_i in 0..1 {
+                r_e_c0_tmp[server_i] = barrett_reduce(
+                    server_noise[server_i * NOISE_LEN + b_i] * (noise_sign_i8[b_i] as i32)
+                        + r_e_c0_tmp[server_i],
+                );
+
+                let mut temp: i32 = barrett_reduce(mul_mod_mont(
+                    server_noise[server_i * NOISE_LEN + b_i] * (noise_sign_i8[b_i] as i32),
+                    r1_vec[b_i],
+                ));
+                r_e_c1_tmp[server_i] = barrett_reduce(temp + r_e_c1_tmp[server_i]);
+
+                temp = barrett_reduce(mul_mod_mont(temp, r1_vec[b_i]));
+                r_e_c2_tmp[server_i] = barrett_reduce(temp + r_e_c2_tmp[server_i]);
+            }
+
+        }
+
+        for server_i in 0..1 {
+            t_c0_alpha[B_SLICE * server_i + a_i] = r_e_c0_tmp[server_i];
+            t_c1_alpha[B_SLICE * server_i + a_i] = r_e_c1_tmp[server_i];
+            t_c2_alpha[B_SLICE * server_i + a_i] = r_e_c2_tmp[server_i];
+        }
+
+        // Eval code
+
+
+        for server_i in 0..1 {
+            r_c0_eval[server_i] =
+                barrett_reduce(r_c0_eval[server_i] + server_c0_eval_tmp[server_i]);
+            r_c1_eval[server_i] =
+                barrett_reduce(r_c1_eval[server_i] + server_c1_eval_tmp[server_i]);
+            r_c2_eval[server_i] =
+                barrett_reduce(r_c2_eval[server_i] + server_c2_eval_tmp[server_i]);
+        }
+    }
+
+    return (
+        r_c0_eval,
+        r_c1_eval,
+        r_c2_eval,
+        t_c0_alpha,
+        t_c1_alpha,
+        t_c2_alpha,
+        r2_seed,
+        r3_seed,
+    );
+}
+
 
 pub fn servers_message_welformedness_check(
     b_vec_1d_u8: &Vec<u8>,
@@ -668,6 +981,122 @@ pub fn servers_message_welformedness_check(
     }
 
     return (b_vec_1d_u8_total, passed);
+}
+
+
+pub fn servers_message_welformedness_check_single_server(
+    inv_servers: i32,
+    a_bt: &[i32],
+    b_bt: &[i32],
+    c_bt: &[i32],
+    t_c0_alpha: &Vec<i32>,
+    t_c1_alpha: &Vec<i32>,
+    t_c2_alpha: &Vec<i32>,
+    r_c0_eval: &Vec<i32>,
+    r_c1_eval: &Vec<i32>,
+    r_c2_eval: &Vec<i32>,
+) -> Vec<u8> {
+    // step 2. d. i. B.: Beaver Triple for Message Well-formedness
+    let mut bt_c0_shares = vec![0i32; 1 * B_SLICE];
+    let mut bt_c1_shares = vec![0i32; 1 * B_SLICE];
+    let mut bt_c2_shares = vec![0i32; 1 * B_SLICE];
+
+    let mut b_vec_1d_u8_total = vec![0u8; E_BYTES * B_SLICE * 1];
+
+    let b_vec_1d_total: &[i32] = bytemuck::cast_slice(&b_vec_1d_u8_total);
+
+    run_beaver_triple_single(
+        &b_vec_1d_total[..],
+        &t_c0_alpha,
+        &mut bt_c0_shares,
+        &a_bt,
+        &b_bt,
+        &c_bt,
+        B_SLICE,
+        BT_INST1,
+        inv_servers,
+    );
+
+    run_beaver_triple_single(
+        &b_vec_1d_total[..],
+        &t_c1_alpha,
+        &mut bt_c1_shares,
+        &a_bt[B_SLICE..],
+        &b_bt[B_SLICE..],
+        &c_bt[B_SLICE..],
+        B_SLICE,
+        BT_INST1,
+        inv_servers,
+    );
+
+    run_beaver_triple_single(
+        &b_vec_1d_total[..],
+        &t_c2_alpha,
+        &mut bt_c2_shares,
+        &a_bt[2 * B_SLICE..],
+        &b_bt[2 * B_SLICE..],
+        &c_bt[2 * B_SLICE..],
+        B_SLICE,
+        BT_INST1,
+        inv_servers,
+    );
+
+    let mut bt_c0_shares_sum = [0i32; 1];
+    let mut bt_c1_shares_sum = [0i32; 1];
+    let mut bt_c2_shares_sum = [0i32; 1];
+    for s_i in 0..1 {
+        for i in 0..B_SLICE {
+            bt_c0_shares_sum[s_i] =
+                barrett_reduce(bt_c0_shares_sum[s_i] + bt_c0_shares[s_i * B_SLICE + i]);
+            bt_c1_shares_sum[s_i] =
+                barrett_reduce(bt_c1_shares_sum[s_i] + bt_c1_shares[s_i * B_SLICE + i]);
+            bt_c2_shares_sum[s_i] =
+                barrett_reduce(bt_c2_shares_sum[s_i] + bt_c2_shares[s_i * B_SLICE + i]);
+        }
+    }
+
+    let mut m_0_shares = [0i32; 1];
+    let mut m_1_shares = [0i32; 1];
+    let mut m_2_shares = [0i32; 1];
+
+    for s_i in 0..1 {
+        m_0_shares[s_i] = barrett_reduce(r_c0_eval[s_i] + bt_c0_shares_sum[s_i]);
+        m_1_shares[s_i] = barrett_reduce(r_c1_eval[s_i] + bt_c1_shares_sum[s_i]);
+        m_2_shares[s_i] = barrett_reduce(r_c2_eval[s_i] + bt_c2_shares_sum[s_i]);
+    }
+
+    let mut m_02_shares = [0i32; 1];
+    let mut m_11_shares = [0i32; 1];
+    run_beaver_triple_single(
+        &m_0_shares[..],
+        &m_2_shares,
+        &mut m_02_shares,
+        &a_bt[3 * B_SLICE..],
+        &b_bt[3 * B_SLICE..],
+        &c_bt[3 * B_SLICE..],
+        1,
+        BT_INST1,
+        inv_servers,
+    );
+    run_beaver_triple_single(
+        &m_1_shares[..],
+        &m_1_shares,
+        &mut m_11_shares,
+        &a_bt[3 * B_SLICE + 1..],
+        &b_bt[3 * B_SLICE + 1..],
+        &c_bt[3 * B_SLICE + 1..],
+        1,
+        BT_INST1,
+        inv_servers,
+    );
+
+    let mut m_11_02_shares = [0i32; 1];
+    for s_i in 0..1 {
+        m_11_02_shares[s_i] = barrett_reduce(m_11_shares[s_i] - m_02_shares[s_i]);
+    }
+
+
+    return b_vec_1d_u8_total;
 }
 
 pub fn server_b_e_check(
@@ -810,4 +1239,218 @@ pub fn server_b_e_check(
     }
 
     return passed;
+}
+
+pub fn server_b_e_check_single_server(
+    r2_seed: &[u8],
+    r3_seed: &[u8],
+    inv_servers: i32,
+) {
+    // Part 2 .e. : Verify b and e ̄ are binary-valued:
+    //A server creates a secret sharing of 1
+    let mut one_shares_u8 = [0u8; E_BYTES * NUM_SERVERS];
+
+    fill_rand_aes128_modq(&mut one_shares_u8, NUM_SERVERS - 1);
+    let one_shares: &mut [i32] = bytemuck::cast_slice_mut(&mut one_shares_u8);
+
+    one_shares[NUM_SERVERS - 1] = 1;
+    for i in 0..NUM_SERVERS - 1 {
+        one_shares[NUM_SERVERS - 1] = barrett_reduce(one_shares[NUM_SERVERS - 1] - one_shares[i]);
+    }
+
+    let mut r2_vec_u8 = vec![0u8; B_SLICE_BYTES];
+    gen_r2_vec_sub(&r2_seed, &mut r2_vec_u8);
+    let r2_vec: &[i32] = bytemuck::cast_slice(&r2_vec_u8);
+
+    let mut r2_b_shares = vec![0i32; NUM_SERVERS * B_SLICE];
+    let mut one_b_shares = vec![0i32; NUM_SERVERS * B_SLICE];
+
+
+
+    let mut r3_vec_u8 = vec![0u8; E_BYTES * NOISE_LEN * NOISE_BITS];
+    gen_r3_vec_sub(&r3_seed, &mut r3_vec_u8);
+    let r3_vec: &[i32] = bytemuck::cast_slice(&r3_vec_u8);
+
+    let mut r3_e_shares = vec![0i32; NUM_SERVERS * NOISE_LEN * NOISE_BITS];
+    let mut one_e_shares = vec![0i32; NUM_SERVERS * NOISE_LEN * NOISE_BITS];
+
+
+    let mut b_snip_shares = [0i32; 1 * B_SLICE];
+    let mut e_snip_shares = [0i32; 1 * NOISE_LEN * NOISE_BITS];
+
+    let mut a_bt_a_u8 = vec![0u8; E_BYTES * 1 * B_SLICE];
+    let mut b_bt_a_u8 = vec![0u8; E_BYTES * 1 * B_SLICE];
+    let mut c_bt_a_u8 = vec![0u8; E_BYTES * 1 * B_SLICE];
+    let mut a_bt_b_u8 = vec![0u8; E_BYTES * 1 * NOISE_LEN * NOISE_BITS];
+    let mut b_bt_b_u8 = vec![0u8; E_BYTES * 1 * NOISE_LEN * NOISE_BITS];
+    let mut c_bt_b_u8 = vec![0u8; E_BYTES * 1 * NOISE_LEN * NOISE_BITS];
+
+    let a_bt_a: &[i32] = bytemuck::cast_slice(&a_bt_a_u8);
+    let b_bt_a: &[i32] = bytemuck::cast_slice(&b_bt_a_u8);
+    let a_bt_b: &[i32] = bytemuck::cast_slice(&a_bt_b_u8);
+    let b_bt_b: &[i32] = bytemuck::cast_slice(&b_bt_b_u8);
+    let c_bt_a: &mut [i32] = bytemuck::cast_slice_mut(&mut c_bt_a_u8);
+    let c_bt_b: &mut [i32] = bytemuck::cast_slice_mut(&mut c_bt_b_u8);
+
+
+
+    run_beaver_triple_single(
+        &r2_b_shares[..],
+        &one_b_shares,
+        &mut b_snip_shares,
+        a_bt_a,
+        b_bt_a,
+        c_bt_a,
+        BT_INST2_A,
+        BT_INST2_A,
+        inv_servers,
+    );
+
+    run_beaver_triple_single(
+        &r3_e_shares[..],
+        &one_e_shares,
+        &mut e_snip_shares,
+        a_bt_b,
+        b_bt_b,
+        c_bt_b,
+        BT_INST2_B,
+        BT_INST2_B,
+        inv_servers,
+    );
+}
+
+pub fn server_b_e_check_single_server_rows(
+    bt_seeds_pt2: &Vec<u8>,
+    b_vec_1d_total: &[i32],
+) {
+    // Part 2 .e. : Verify b and e ̄ are binary-valued:
+    //A server creates a secret sharing of 1
+    let mut one_shares_u8 = [0u8; E_BYTES * NUM_SERVERS];
+
+    let one_shares: &mut [i32] = bytemuck::cast_slice_mut(&mut one_shares_u8);
+
+
+    let mut r2_vec_u8 = vec![0u8; B_SLICE_BYTES];
+    let r2_vec: &[i32] = bytemuck::cast_slice(&r2_vec_u8);
+
+    let mut r2_b_shares = vec![0i32; NUM_SERVERS * B_SLICE];
+    let mut one_b_shares = vec![0i32; NUM_SERVERS * B_SLICE];
+
+
+    // ROWS
+    for i in 0..B_SLICE/ROWS {
+        for s_i in 0..1 {
+            r2_b_shares[s_i * B_SLICE + i] =
+                mul_mod_mont(r2_vec[i], b_vec_1d_total[s_i * B_SLICE + i]);
+            one_b_shares[s_i * B_SLICE + i] =
+                barrett_reduce(one_shares[s_i] - b_vec_1d_total[s_i * B_SLICE + i]);
+        }
+    }
+
+
+
+    let mut b_snip_shares = [0i32; 1 * B_SLICE];
+
+    let mut a_bt_a_u8 = vec![0u8; E_BYTES * 1 * B_SLICE];
+    let mut b_bt_a_u8 = vec![0u8; E_BYTES * 1 * B_SLICE];
+    let mut c_bt_a_u8 = vec![0u8; E_BYTES * 1 * B_SLICE];
+
+
+    // ROWS then BLOCKS
+    for s_i in 0..1 {
+        fill_rand_aes128_modq_nr_3_by_seed(
+            &bt_seeds_pt2[s_i * SEED_IV_LEN..s_i * SEED_IV_LEN + 16],
+            &bt_seeds_pt2[s_i * SEED_IV_LEN + 16..s_i * SEED_IV_LEN + 32],
+            &mut a_bt_a_u8[s_i * E_BYTES * BT_INST2_A/ROWS..(s_i + 1) * E_BYTES * BT_INST2_A/ROWS],
+            &mut b_bt_a_u8[s_i * E_BYTES * BT_INST2_A/ROWS..(s_i + 1) * E_BYTES * BT_INST2_A/ROWS],
+            &mut c_bt_a_u8[s_i * E_BYTES * BT_INST2_A/ROWS..(s_i + 1) * E_BYTES * BT_INST2_A/ROWS],
+            E_BYTES * BT_INST2_A/ROWS,
+            E_BYTES * BT_INST2_A/ROWS,
+            E_BYTES * BT_INST2_A/ROWS,
+        );
+    }
+
+
+
+    let mut m_sum = [0i32; NUM_SERVERS];
+
+    //ROWS then BLOCKS
+    for s_i in 0..1 {
+        for i in 0..BT_INST2_A/ROWS {
+            m_sum[s_i] = barrett_reduce(m_sum[s_i] + b_snip_shares[s_i * BT_INST2_A + i]);
+        }
+    }
+
+}
+
+pub fn server_b_e_check_single_server_blocks(
+    server_noise_bits: &Vec<u32>,
+    bt_seeds_pt2: &Vec<u8>,
+) {
+    // Part 2 .e. : Verify b and e ̄ are binary-valued:
+    //A server creates a secret sharing of 1
+    let mut one_shares_u8 = [0u8; E_BYTES * 1];
+
+    let one_shares: &mut [i32] = bytemuck::cast_slice_mut(&mut one_shares_u8);
+
+
+    let mut r2_vec_u8 = vec![0u8; B_SLICE_BYTES];
+    let r2_vec: &[i32] = bytemuck::cast_slice(&r2_vec_u8);
+
+
+    let mut r3_vec_u8 = vec![0u8; E_BYTES * NOISE_LEN * NOISE_BITS];
+    let r3_vec: &[i32] = bytemuck::cast_slice(&r3_vec_u8);
+    // let mut server_noise_bits = vec![0u32; NUM_SERVERS * NOISE_LEN * NOISE_BITS];
+
+    let mut r3_e_shares = vec![0i32; 1 * NOISE_LEN * NOISE_BITS];
+    let mut one_e_shares = vec![0i32; 1 * NOISE_LEN * NOISE_BITS];
+
+
+    // BLOCKS
+    for i in 0..NOISE_LEN * NOISE_BITS/BLOCKS {
+        for s_i in 0..1 {
+            r3_e_shares[s_i * NOISE_LEN * NOISE_BITS + i] = mul_mod_mont(
+                r3_vec[i],
+                server_noise_bits[s_i * NOISE_LEN * NOISE_BITS + i] as i32,
+            );
+            one_e_shares[s_i * NOISE_LEN * NOISE_BITS + i] = barrett_reduce(
+                one_shares[s_i] - server_noise_bits[s_i * NOISE_LEN * NOISE_BITS + i] as i32,
+            );
+        }
+    }
+
+
+    let mut e_snip_shares = [0i32; 1 * NOISE_LEN * NOISE_BITS];
+
+
+    let mut a_bt_b_u8 = vec![0u8; E_BYTES * 1 * NOISE_LEN * NOISE_BITS];
+    let mut b_bt_b_u8 = vec![0u8; E_BYTES * 1 * NOISE_LEN * NOISE_BITS];
+    let mut c_bt_b_u8 = vec![0u8; E_BYTES * 1 * NOISE_LEN * NOISE_BITS];
+
+
+    // ROWS then BLOCKS
+    for s_i in 0..1 {
+        fill_rand_aes128_modq_nr_3_by_seed(
+            &bt_seeds_pt2[s_i * SEED_IV_LEN..s_i * SEED_IV_LEN + 16],
+            &bt_seeds_pt2[s_i * SEED_IV_LEN + 16..s_i * SEED_IV_LEN + 32],
+            &mut a_bt_b_u8[s_i * E_BYTES * BT_INST2_B/BLOCKS..(s_i + 1) * E_BYTES * BT_INST2_B/BLOCKS],
+            &mut b_bt_b_u8[s_i * E_BYTES * BT_INST2_B/BLOCKS..(s_i + 1) * E_BYTES * BT_INST2_B/BLOCKS],
+            &mut c_bt_b_u8[s_i * E_BYTES * BT_INST2_B/BLOCKS..(s_i + 1) * E_BYTES * BT_INST2_B/BLOCKS],
+            E_BYTES * BT_INST2_B/BLOCKS,
+            E_BYTES * BT_INST2_B/BLOCKS,
+            E_BYTES * BT_INST2_B/BLOCKS,
+        );
+    }
+
+    let mut m_sum = [0i32; NUM_SERVERS];
+
+    //ROWS then BLOCKS
+    for s_i in 0..1 {
+        for i in 0..BT_INST2_B/BLOCKS {
+            m_sum[s_i] = barrett_reduce(m_sum[s_i] + e_snip_shares[s_i * BT_INST2_B + i]);
+        }
+    }
+
+
+
 }

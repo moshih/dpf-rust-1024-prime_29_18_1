@@ -348,9 +348,9 @@ pub fn separate_bits(input: &[i32], output: &mut [u32]) {
     }
 }
 
-pub fn separate_bits_single_block(input: &[i32], output: &mut [u32]) {
-    let mut bits = vec![0u32; NOISE_LEN / NUM_BLOCK * NOISE_BITS];
-    for iter in 0..NOISE_LEN / NUM_BLOCK {
+pub fn separate_bits_single_blocks(input: &[i32], output: &mut [u32]) {
+    let mut bits = vec![0u32; NOISE_LEN / BLOCKS * NOISE_BITS];
+    for iter in 0..NOISE_LEN / BLOCKS {
         for bit in 0..NOISE_BITS {
             bits[iter * NOISE_BITS + bit] = ((input[iter] as u32) >> bit) & 1;
         }
@@ -359,17 +359,17 @@ pub fn separate_bits_single_block(input: &[i32], output: &mut [u32]) {
     let mut output_vec_u8: &mut [u8] = bytemuck::cast_slice_mut(&mut output[..]);
     let output_shares = fill_rand_aes128_modq(
         &mut output_vec_u8,
-        NOISE_BITS * (NOISE_LEN / NUM_BLOCK) * (NUM_SERVERS - 1),
+        NOISE_BITS * (NOISE_LEN / BLOCKS) * (NUM_SERVERS - 1),
     );
 
-    for iter in 0..NOISE_BITS * NOISE_LEN / NUM_BLOCK {
+    for iter in 0..NOISE_BITS * NOISE_LEN / BLOCKS {
         let mut temp: i32 = 0;
         for iter_s in 0..(NUM_SERVERS - 1) {
             temp = barrett_reduce(
-                temp + output_shares[iter_s * NOISE_BITS * NOISE_LEN / NUM_BLOCK + iter],
+                temp + output_shares[iter_s * NOISE_BITS * NOISE_LEN / BLOCKS + iter],
             );
         }
-        output_shares[(NUM_SERVERS - 1) * NOISE_BITS * NOISE_LEN / NUM_BLOCK + iter] =
+        output_shares[(NUM_SERVERS - 1) * NOISE_BITS * NOISE_LEN / BLOCKS + iter] =
             barrett_reduce((bits[iter] as i32) - temp);
     }
 }
@@ -377,6 +377,21 @@ pub fn separate_bits_single_block(input: &[i32], output: &mut [u32]) {
 // server combines bits of their own share
 pub fn combine_bits(input: &[u32], output: &mut [i32]) {
     for value_iter in 0..NOISE_LEN {
+        let mut temp: i32 = 0;
+        for bit_iter in 0..NOISE_BITS {
+            temp = temp
+                + mul_mod_mont(
+                input[NOISE_BITS * value_iter + bit_iter] as i32,
+                POW2I32[bit_iter],
+            );
+        }
+        output[value_iter] = barrett_reduce(temp);
+    }
+}
+
+// server combines bits of their own share
+pub fn combine_bits_blocks(input: &[u32], output: &mut [i32]) {
+    for value_iter in 0..NOISE_LEN/BLOCKS {
         let mut temp: i32 = 0;
         for bit_iter in 0..NOISE_BITS {
             temp = temp

@@ -200,7 +200,7 @@ fn main_param_block() {
 
     // B vec + S vec + V vec
     let sent_to_server_block: f32 =
-        (E_BYTES * N_PARAM + E_BYTES * N_PARAM * N_PARAM + E_BYTES * NUM_BLOCK * N_PARAM) as f32;
+        (B_SLICE_BYTES + S_SLICE_BYTES + V_SLICE_BYTES) as f32;
     println!(
         "A single server gets client DPF data sent {} Bytes ({} KB or {} MB)",
         sent_to_server_block,
@@ -209,7 +209,7 @@ fn main_param_block() {
     );
 
     // V vec + (B+S)) seed
-    let sent_to_server_block_seed: f32 = (E_BYTES * NUM_BLOCK * N_PARAM + 32) as f32;
+    let sent_to_server_block_seed: f32 = (V_SLICE_BYTES + 32) as f32;
     println!(
         "Other servers gets client DPF data sent {} Bytes ({} KB or {} MB)",
         sent_to_server_block_seed,
@@ -223,7 +223,7 @@ fn main_param_block() {
     BT_INST2_B = NOISE_LEN * NOISE_BITS
      */
     // (rx,st,sa) seed, noise and sign bit seeds, and BTs
-    let snip_sent_to_server_block: f32 = (32+( NUM_BLOCK * N_PARAM * (NOISE_BITS*E_BYTES+1)) + E_BYTES*(BT_INST1+BT_INST2_A+BT_INST2_B)) as f32;
+    let snip_sent_to_server_block: f32 = (32+( NOISE_LEN * (NOISE_BITS*E_BYTES+1)) + E_BYTES*(BT_INST1+BT_INST2_A+BT_INST2_B)) as f32;
     //(E_BYTES * (E_BYTES * N_PARAM + 2 + NUM_BLOCK * N_PARAM * NOISE_BITS) + 2 * 32) as f32;
     println!(
         "A single server gets SNIP data sent {} Bytes ({} KB or {} MB)",
@@ -278,11 +278,17 @@ fn block_sq_compact_snip_timings_server(
     println!("eval_iterations_nparam: {}", eval_iterations_nparam);
     println!("eval_all_from_seed iterations: {}", eval_all);
 
-    dpf_eval_every_server_timings_single(eval_iterations);
+    //dpf_eval_every_server_timings_single(eval_iterations);
+    //thread::sleep(time::Duration::from_secs(wait_time));
+    //dpf_eval_every_server_timings_numblock(eval_iterations);
+    //thread::sleep(time::Duration::from_secs(wait_time));
+    //dpf_eval_every_server_timings_nparam(eval_iterations);
+    //thread::sleep(time::Duration::from_secs(wait_time));
+    dpf_eval_every_server_timings_p1(eval_iterations);
     thread::sleep(time::Duration::from_secs(wait_time));
-    dpf_eval_every_server_timings_numblock(eval_iterations);
+    dpf_eval_every_server_timings_p2(eval_iterations);
     thread::sleep(time::Duration::from_secs(wait_time));
-    dpf_eval_every_server_timings_nparam(eval_iterations);
+    dpf_eval_every_server_timings_p3(eval_iterations);
     thread::sleep(time::Duration::from_secs(wait_time));
     dpf_eval_long_server_timings(eval_iterations);
     thread::sleep(time::Duration::from_secs(wait_time));
@@ -332,7 +338,7 @@ fn main_authtiming() {
     // eval_iterations = escale * s_iterations
     // eval_all
 
-    let iterations: usize = 100;
+    let iterations: usize = 1;
     let bscale: usize = 1;
     let ascale: usize = 1;
     let escale: usize = 1;
@@ -668,7 +674,7 @@ fn main_param_block_sq() {
 // has expansion factor of
 // 2^10, 2^12, 2^14, 2^16, 2^18, 2^20
 fn main() {
-    //main_param_block();
+    main_param_block();
     //println!("-------------------");
     //main_param_block_sq();
 
@@ -680,8 +686,8 @@ fn main() {
     //main_block_sq_new_compact_correctness();
 
     // Checks that Auth DPF Passes
-    main_check_correctness();
+    //main_check_correctness();
 
     // Auth Timings
-    //main_authtiming();
+    main_authtiming();
 }

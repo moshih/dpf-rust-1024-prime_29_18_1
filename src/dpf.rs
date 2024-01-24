@@ -2389,6 +2389,7 @@ pub fn dpf_eval_lwe_seed_block_get_bs(
     s_vec_1d_u8: &mut [u8],
     seed: &[u8],
 ) {
+    let block_num: usize = l / (N_PARAM * N_ROWS);
     let block_l: usize = l % (N_PARAM * N_ROWS);
 
     let block_lx: usize = block_l / N_PARAM;
@@ -2619,11 +2620,11 @@ pub fn dpf_eval_lwe_block_new_all_sub_timing(
     }
     //for l_iter in (0..N_PARAM * N_PARAM * NUM_BLOCK).step_by(N_PARAM)
     //let l_iter:usize = N_PARAM * index;
-    for blk_i in 0..NUM_BLOCK {
-        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_PARAM;
+    for blk_i in 0..BLOCKS {
+        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_ROWS;
         {
-            let block_num = l_iter / (N_PARAM * N_PARAM);
-            let block_l = l_iter % (N_PARAM * N_PARAM);
+            let block_num = l_iter / (N_PARAM * N_ROWS);
+            let block_l = l_iter % (N_PARAM * N_ROWS);
 
             let block_lx: usize = block_l / N_PARAM;
 
@@ -2644,7 +2645,7 @@ pub fn dpf_eval_lwe_block_new_all_sub_timing(
             let mut bv_i32: i32;
 
             for ly_iter in 0..N_PARAM {
-                bv_i32 = mul_mod_mont(b_vec[block_lx], v_vec[V_SLICE * block_num + ly_iter]);
+                bv_i32 = mul_mod_mont(b_vec[block_lx], v_vec[N_PARAM * block_num + ly_iter]);
 
                 //m[ly_iter + block_num * N_PARAM * N_PARAM + block_lx * N_PARAM] = g_expand[ly_iter] + bv_i32;
                 m[ly_iter + blk_i * N_PARAM] = g_expand[ly_iter] + bv_i32;
@@ -2800,11 +2801,11 @@ pub fn dpf_eval_lwe_seed_block_all_sub_timing(
 ) {
     //for l_iter in (0..N_PARAM * N_PARAM * NUM_BLOCK).step_by(N_PARAM)
     //let l_iter:usize = index*N_PARAM;
-    for blk_i in 0..NUM_BLOCK {
-        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_PARAM;
+    for blk_i in 0..BLOCKS {
+        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_ROWS;
         {
-            let block_num = l_iter / (N_PARAM * N_PARAM);
-            let block_l = l_iter % (N_PARAM * N_PARAM);
+            let block_num = l_iter / (N_PARAM * N_ROWS);
+            let block_l = l_iter % (N_PARAM * N_ROWS);
 
             let block_lx: usize = block_l / N_PARAM;
 
@@ -2817,27 +2818,15 @@ pub fn dpf_eval_lwe_seed_block_all_sub_timing(
                 s_vec_1d_u8[i] = 0;
             }
 
-            /*
-            // todo: reimp
             fill_rand_aes128_modq_nr_2_by_seed_sq_getsub(
                 &seed[0..16],
                 &seed[16..32],
                 b_vec_u8,
                 s_vec_1d_u8,
                 E_BYTES * B_SLICE,
-                E_BYTES * N_PARAM,
+                E_BYTES * S_SLICE,
                 block_lx,
-                N_PARAM,
-            );
-
-             */
-            fill_rand_aes128_modq_nr_1_by_seed_sq_getsub(
-                &seed[0..16],
-                &seed[16..32],
-                s_vec_1d_u8,
-                E_BYTES * N_PARAM,
-                block_lx,
-                N_PARAM,
+                N_ROWS,
             );
 
 
@@ -2848,7 +2837,7 @@ pub fn dpf_eval_lwe_seed_block_all_sub_timing(
                 &a_vec[block_num * N_PARAM..(block_num + 1) * N_PARAM],
                 &b_vec_u8[..],
                 &s_vec_1d_u8[..],
-                &v_vec_u8[block_num * E_BYTES * V_SLICE..(block_num + 1) * E_BYTES * V_SLICE],
+                &v_vec_u8[block_num * E_BYTES * N_PARAM..(block_num + 1) * E_BYTES * N_PARAM],
             );
         }
     }

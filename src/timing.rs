@@ -1,11 +1,8 @@
-use crate::auth::{client_post_gen, gen_beaver_triples, gen_beaver_triples2, set_up_init_vars};
+use crate::auth::{client_post_gen, gen_beaver_triples, gen_beaver_triples2, server_b_e_check_single_server, server_b_e_check_single_server_blocks, server_b_e_check_single_server_rows, servers_auth_init_and_prep_eval, servers_auth_init_and_prep_eval_single_blocks, servers_auth_init_and_prep_eval_single_server, servers_auth_init_and_prep_eval_single_server_nrows, servers_message_welformedness_check_single_server, set_up_init_vars};
 use crate::dpf::{dpf_eval_lwe_block_new, dpf_eval_lwe_block_new_all_sub, dpf_eval_lwe_block_new_all_sub_timing, dpf_eval_lwe_seed_block, dpf_eval_lwe_seed_block_all_sub, dpf_eval_lwe_seed_block_all_sub_timing, dpf_eval_lwe_seed_block_get_bs, dpf_gen_lwe_seed_block_new_sq_compact, dpf_gen_lwe_seed_block_new_sq_compact_veri, fill_rand_aes128_modq, fill_rand_aes128_modq_nr_3_by_seed, fill_rand_aes128_modq_nr_6_by_seed, fill_rand_aes128_nr};
 use crate::ntt::{barrett_reduce, mul_mod_mont};
-use crate::params::{
-    BT_INST1, BT_INST2_A, BT_INST2_B, E_BYTES, NOISE_BITS, NOISE_LEN, NUM_BLOCK, NUM_SERVERS,
-    N_PARAM, Q, SEED_IV_LEN,
-};
-use crate::snip::{combine_bits, combine_bits_numblocks, gen_r1_vec_sub, gen_r2_vec_sub, gen_r3_vec_sub, get_rand_coeff_seeds, mod_inverse, mul_shares_p2, separate_bits, separate_bits_single_block};
+use crate::params::{BT_INST1, BT_INST2_A, BT_INST2_B, E_BYTES, NOISE_BITS, NOISE_LEN, NUM_BLOCK, NUM_SERVERS, N_PARAM, Q, SEED_IV_LEN, BLOCKS, N_ROWS, B_SLICE, S_SLICE, N_BLOCKS, A_SLICE, B_SLICE_BYTES, S_SLICE_BYTES, V_SLICE_BYTES, ROWS};
+use crate::snip::{combine_bits, combine_bits_numblocks, gen_r1_vec_sub, gen_r2_vec_sub, gen_r3_vec_sub, get_rand_coeff_seeds, mod_inverse, mul_shares_p2, separate_bits, separate_bits_single_blocks};
 use std::time::Instant;
 use std::{thread, time};
 
@@ -104,9 +101,7 @@ pub fn client_post_gen_timing(
     correction_pt2b: &mut [i32],
 ) {
     // separates the noise bits
-    for i in 0..NUM_BLOCK {
-        separate_bits_single_block(&noise_i32, server_noise_bits);
-    }
+    separate_bits(&noise_i32, server_noise_bits);
     let mut rand_seed = vec![0u8; SEED_IV_LEN];
     fill_rand_aes128_nr(&mut rand_seed, SEED_IV_LEN);
 
@@ -115,17 +110,14 @@ pub fn client_post_gen_timing(
     fill_rand_aes128_nr(bt_seeds_pt2, SEED_IV_LEN * NUM_SERVERS);
 
     fill_rand_aes128_nr(&mut rand_seed, SEED_IV_LEN);
-
-    gen_beaver_triples(&rand_seed, bt_seeds_pt2, correction_pt2a, BT_INST2_A);
-
-    for i in 0..NUM_BLOCK {
-        gen_beaver_triples(
-            &rand_seed,
-            bt_seeds_pt2,
-            correction_pt2b,
-            BT_INST2_B / NUM_BLOCK,
-        );
-    }
+    gen_beaver_triples2(
+        &rand_seed,
+        bt_seeds_pt2,
+        correction_pt2a,
+        correction_pt2b,
+        BT_INST2_A,
+        BT_INST2_B,
+    );
 }
 
 pub fn client_post_gen_timing_single(
@@ -151,7 +143,7 @@ pub fn client_post_gen_timing_single(
 
 }
 
-pub fn client_post_gen_timing_numblock(
+pub fn client_post_gen_timing_blocks(
     noise_i32: &[i32],
     server_noise_bits: &mut [u32],
     bt_seeds_pt1: &mut [u8],
@@ -163,7 +155,7 @@ pub fn client_post_gen_timing_numblock(
     // separates the noise bits
     //for i in 0..NUM_BLOCK {
     for i in 0..1 {
-        separate_bits_single_block(&noise_i32, server_noise_bits);
+        separate_bits_single_blocks(&noise_i32, server_noise_bits);
     }
     let mut rand_seed = vec![0u8; SEED_IV_LEN];
 
@@ -226,7 +218,7 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_snip_aftergen_timings(gen_iteration
     println!("seed_compact AFTER GEN Time single elapsed is: {:?}", gen_duration);
     let gen_start_num_block = Instant::now();
     for _iter_test in 0..gen_iterations {
-        client_post_gen_timing_numblock(
+        client_post_gen_timing_blocks(
             &noise_i32,
             &mut server_noise_bits,
             &mut bt_seeds_pt1,
@@ -237,7 +229,7 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_snip_aftergen_timings(gen_iteration
         );
     }
     let gen_duration_num_block = gen_start_num_block.elapsed();
-    println!("seed_compact AFTER GEN Time (got numblock: {:?}) elapsed is: {:?}", gen_duration_num_block, gen_duration_num_block* NUM_BLOCK as u32);
+    println!("seed_compact AFTER GEN Time (got blocks: {:?}) elapsed is: {:?}", gen_duration_num_block, gen_duration_num_block* BLOCKS as u32);
 }
 
 // The computation of the DPF Eval single for the (n-1) servers that have seeds
@@ -1113,7 +1105,7 @@ pub fn dpf_eval_every_server_timings_nparam(eval_iterations: usize) {
         // for s_i in 0..NUM_SERVERS {
         for s_i in 0..1 {
             for i in 0..1 {
-            //for i in 0..N_PARAM {
+                //for i in 0..N_PARAM {
                 bt_c0_shares_sum[s_i] =
                     barrett_reduce(bt_c0_shares_sum[s_i] + bt_c0_shares[s_i * N_PARAM + i]);
                 bt_c1_shares_sum[s_i] =
@@ -1169,11 +1161,117 @@ pub fn dpf_eval_every_server_timings_nparam(eval_iterations: usize) {
     println!("EVAL every server (got mul by N_PARAM: {:?}) time elapsed is: {:?}",eval_duration, eval_duration*N_PARAM as u32);
 }
 
+
+pub fn dpf_eval_every_server_timings_p1(eval_iterations: usize) {
+
+    let bt_seeds_pt1 = vec![0u8; SEED_IV_LEN * 1];
+    let server_noise_bits = vec![0u32; 1 * NOISE_LEN * NOISE_BITS];
+    let coeff_seeds = vec![0u8; SEED_IV_LEN];
+    let mut noise_sign_i8 = vec![0i8; NOISE_LEN];
+    let mut a_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
+    let mut b_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
+    let mut c_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    let single_eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        servers_auth_init_and_prep_eval_single_server(&bt_seeds_pt1, &coeff_seeds, &mut a_bt_u8, &mut b_bt_u8, &mut c_bt_u8);
+    }
+    let single_eval_duration = single_eval_start.elapsed();
+    let blocks_eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        servers_auth_init_and_prep_eval_single_blocks(&server_noise_bits);
+    }
+    let blocks_eval_duration = blocks_eval_start.elapsed();
+    let rows_eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        servers_auth_init_and_prep_eval_single_server_nrows(&mut noise_sign_i8);
+    }
+    let rows_eval_duration = rows_eval_start.elapsed();
+    println!("dpf_eval_every_server_timings_p1 S:{:?} B:{:?} R:{:?} = {:?} ",single_eval_duration, blocks_eval_duration, rows_eval_duration, single_eval_duration + blocks_eval_duration*BLOCKS as u32 + rows_eval_duration*N_ROWS as u32);
+}
+
+pub fn dpf_eval_every_server_timings_p2(eval_iterations: usize) {
+
+
+
+    let mut a_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
+    let mut b_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
+    let mut c_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
+
+    let a_bt: &[i32] = bytemuck::cast_slice(&a_bt_u8);
+    let b_bt: &[i32] = bytemuck::cast_slice(&b_bt_u8);
+    let c_bt: &[i32] = bytemuck::cast_slice(&c_bt_u8);
+
+    let mut t_c0_alpha = vec![0i32; 1 * B_SLICE];
+    let mut t_c1_alpha = vec![0i32; 1 * B_SLICE];
+    let mut t_c2_alpha = vec![0i32; 1 * B_SLICE];
+
+    let mut r_c0_eval = vec![0i32; 1];
+    let mut r_c1_eval = vec![0i32; 1];
+    let mut r_c2_eval = vec![0i32; 1];
+    // one time calculation made at server startup
+    let inv_servers = mod_inverse(NUM_SERVERS as i32, Q);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    let single_eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        servers_message_welformedness_check_single_server(inv_servers, &a_bt, &b_bt, &c_bt, &t_c0_alpha, &t_c1_alpha, &t_c2_alpha, &r_c0_eval, &r_c1_eval, &r_c2_eval);
+    }
+    let single_eval_duration = single_eval_start.elapsed();
+    let blocks_eval_start = Instant::now();
+    /*
+    for _iter_test in 0..eval_iterations {
+        //servers_auth_init_and_prep_eval_single_blocks(&server_noise_bits);
+    }
+    let blocks_eval_duration = blocks_eval_start.elapsed();
+    let rows_eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        //servers_auth_init_and_prep_eval_single_server_nrows(&mut noise_sign_i8);
+    }
+    let rows_eval_duration = rows_eval_start.elapsed();
+
+     */
+    println!("dpf_eval_every_server_timings_p2 {:?} ",single_eval_duration);
+}
+
+pub fn dpf_eval_every_server_timings_p3(eval_iterations: usize) {
+
+    let mut r2_seed = [0u8; SEED_IV_LEN];
+    let mut r3_seed = [0u8; SEED_IV_LEN];
+    let inv_servers = mod_inverse(NUM_SERVERS as i32, Q);
+    let server_noise_bits = vec![0u32; NUM_SERVERS * NOISE_LEN * NOISE_BITS];
+    let bt_seeds_pt2 = vec![0u8; SEED_IV_LEN * NUM_SERVERS];
+
+    let mut b_vec_1d_u8_total = vec![0u8; E_BYTES * B_SLICE * NUM_SERVERS];
+    let b_vec_1d_total: &[i32] = bytemuck::cast_slice(&b_vec_1d_u8_total);
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////
+
+    let single_eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        server_b_e_check_single_server(&r2_seed, &r3_seed, inv_servers);
+    }
+    let single_eval_duration = single_eval_start.elapsed();
+    let blocks_eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        server_b_e_check_single_server_blocks(&server_noise_bits, &bt_seeds_pt2);
+    }
+    let blocks_eval_duration = blocks_eval_start.elapsed();
+    let rows_eval_start = Instant::now();
+    for _iter_test in 0..eval_iterations {
+        server_b_e_check_single_server_rows(&bt_seeds_pt2, &b_vec_1d_total);
+    }
+    let rows_eval_duration = rows_eval_start.elapsed();
+    println!("dpf_eval_every_server_timings_p3 S:{:?} B:{:?} R:{:?} = {:?} ",single_eval_duration, blocks_eval_duration, rows_eval_duration, single_eval_duration + blocks_eval_duration*BLOCKS as u32 + rows_eval_duration*ROWS as u32);
+}
+
 // Computation that the single server with the correction words has to do
 // Does not include eval_all function, which is by itself
 pub fn dpf_eval_long_server_timings(eval_iterations: usize) {
     // Setup of variables
-    let b_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM];
+    let b_vec_1d_u8 = vec![0u8; B_SLICE_BYTES];
 
     let correction_pt1 = vec![0i32; BT_INST1];
 
@@ -1182,14 +1280,14 @@ pub fn dpf_eval_long_server_timings(eval_iterations: usize) {
 
     let mut c_bt_u8 = vec![0u8; E_BYTES * BT_INST1 * 1];
 
-    let mut r1_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+    let mut r1_vec_u8 = vec![0u8; E_BYTES * NOISE_LEN];
 
-    let table_sub = vec![0i32; NUM_BLOCK * N_PARAM];
+    let mut table_sub = vec![0i32; N_BLOCKS];
 
-    let mut b_vec_1d_u8_total = vec![0u8; E_BYTES * N_PARAM * NUM_SERVERS];
+    let mut b_vec_1d_u8_total = vec![0u8; E_BYTES * B_SLICE];
 
-    let mut c_bt_a_u8 = vec![0u8; E_BYTES * NUM_SERVERS * N_PARAM];
-    let mut c_bt_b_u8 = vec![0u8; E_BYTES * NUM_SERVERS * NOISE_LEN * NOISE_BITS];
+    let mut c_bt_a_u8 = vec![0u8; E_BYTES * B_SLICE];
+    let mut c_bt_b_u8 = vec![0u8; E_BYTES * NOISE_LEN * NOISE_BITS];
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1204,7 +1302,7 @@ pub fn dpf_eval_long_server_timings(eval_iterations: usize) {
             c_bt[(1 - 1) * BT_INST1 + i] = correction_pt1[i];
         }
 
-        for _a_i in 0..N_PARAM {
+        for _a_i in 0..N_ROWS {
             let r1_vec: &mut [i32] = bytemuck::cast_slice_mut(&mut r1_vec_u8);
 
             // Eval code
@@ -1212,46 +1310,52 @@ pub fn dpf_eval_long_server_timings(eval_iterations: usize) {
             let mut server_c1_eval_tmp = [0i32; NUM_SERVERS];
             let mut server_c2_eval_tmp = [0i32; NUM_SERVERS];
 
-            for b_i in 0..NOISE_LEN {
-                // Eval code
-                server_c0_eval_tmp[0] = barrett_reduce(server_c0_eval_tmp[0] + table_sub[b_i]);
-                let mut temp_eval: i32 = barrett_reduce(mul_mod_mont(table_sub[b_i], r1_vec[b_i]));
-                server_c1_eval_tmp[0] = barrett_reduce(server_c1_eval_tmp[0] + temp_eval);
+            for i in 0..table_sub.len() {
+                table_sub[i] = 0;
+            }
 
-                temp_eval = barrett_reduce(mul_mod_mont(temp_eval, r1_vec[b_i]));
-                server_c2_eval_tmp[0] = barrett_reduce(server_c2_eval_tmp[0] + temp_eval);
+            for b_i in 0..NOISE_LEN {
+                if b_i < N_BLOCKS {
+                    // Eval code
+                    server_c0_eval_tmp[0] = barrett_reduce(server_c0_eval_tmp[0] + table_sub[b_i]);
+                    let mut temp_eval: i32 = barrett_reduce(mul_mod_mont(table_sub[b_i], r1_vec[b_i]));
+                    server_c1_eval_tmp[0] = barrett_reduce(server_c1_eval_tmp[0] + temp_eval);
+
+                    temp_eval = barrett_reduce(mul_mod_mont(temp_eval, r1_vec[b_i]));
+                    server_c2_eval_tmp[0] = barrett_reduce(server_c2_eval_tmp[0] + temp_eval);
+                }
             }
         }
 
         // step 2. d. i. B.
 
-        for i in 0..E_BYTES * N_PARAM {
-            b_vec_1d_u8_total[E_BYTES * N_PARAM * (1 - 1) + i] = b_vec_1d_u8[i];
+        for i in 0..E_BYTES * B_SLICE {
+            b_vec_1d_u8_total[E_BYTES * B_SLICE * (1 - 1) + i] = b_vec_1d_u8[i];
         }
 
         ////////////////////////////////////////////////////////////////////////////////////
         // Part 2 .e.
 
         //A server creates a secret sharing of 1
-        let mut one_shares_u8 = [0u8; E_BYTES * NUM_SERVERS];
-        fill_rand_aes128_modq(&mut one_shares_u8, NUM_SERVERS - 1);
+        let mut one_shares_u8 = [0u8; E_BYTES * 1];
+        fill_rand_aes128_modq(&mut one_shares_u8, 1 - 1);
         let one_shares: &mut [i32] = bytemuck::cast_slice_mut(&mut one_shares_u8);
 
-        one_shares[NUM_SERVERS - 1] = 1;
-        for i in 0..NUM_SERVERS - 1 {
-            one_shares[NUM_SERVERS - 1] =
-                barrett_reduce(one_shares[NUM_SERVERS - 1] - one_shares[i]);
+        one_shares[1 - 1] = 1;
+        for i in 0..1 - 1 {
+            one_shares[1 - 1] =
+                barrett_reduce(one_shares[1 - 1] - one_shares[i]);
         }
 
         let c_bt_a: &mut [i32] = bytemuck::cast_slice_mut(&mut c_bt_a_u8);
         let c_bt_b: &mut [i32] = bytemuck::cast_slice_mut(&mut c_bt_b_u8);
 
         for i in 0..BT_INST2_A {
-            c_bt_a[(NUM_SERVERS - 1) * BT_INST2_A + i] = correction_pt2a[i];
+            c_bt_a[(1 - 1) * BT_INST2_A + i] = correction_pt2a[i];
         }
 
         for i in 0..BT_INST2_B {
-            c_bt_b[(NUM_SERVERS - 1) * BT_INST2_B + i] = correction_pt2b[i];
+            c_bt_b[(1 - 1) * BT_INST2_B + i] = correction_pt2b[i];
         }
     }
     //let gen_duration = gen_start.elapsed().as_micros();
@@ -1265,12 +1369,15 @@ pub fn dpf_eval_short_server_timings(eval_iterations: usize) {
     // Setup of variables
     let seeds = [0u8; SEED_IV_LEN * (2 - 1)];
 
-    let mut r1_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+    let mut r1_vec_u8 = vec![0u8; E_BYTES * NOISE_LEN];
 
-    let table_sub = vec![0i32; NUM_BLOCK * N_PARAM];
+    let mut table_sub = vec![0i32; N_BLOCKS];
 
-    let mut b_vec_1d_u8_total = vec![0u8; E_BYTES * N_PARAM * 1];
-    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+    let mut b_vec_1d_u8_total = vec![0u8; E_BYTES * B_SLICE * 1];
+
+    let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * B_SLICE * 1];
+    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * S_SLICE];
+
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1278,7 +1385,8 @@ pub fn dpf_eval_short_server_timings(eval_iterations: usize) {
     for _iter_test in 0..eval_iterations {
         // Servers compute this
 
-        for _a_i in 0..N_PARAM {
+        // N_ROWS
+        for _a_i in 0..1 {
             let r1_vec: &mut [i32] = bytemuck::cast_slice_mut(&mut r1_vec_u8);
             //r1_vec.fill(2);
 
@@ -1290,7 +1398,17 @@ pub fn dpf_eval_short_server_timings(eval_iterations: usize) {
             // Eval code
             // for eval_s_iter in 1..NUM_SERVERS {
             for eval_s_iter in 1..2 {
-                for b_i in 0..NOISE_LEN {
+                for i in 0..table_sub.len() {
+                    table_sub[i] = 0;
+                }
+                for i in 0..b_vecs_1d_u8_eval.len() {
+                    b_vecs_1d_u8_eval[i] = 0;
+                }
+                for i in 0..s_vecs_1d_u8_eval.len() {
+                    s_vecs_1d_u8_eval[i] = 0;
+                }
+
+                for b_i in 0..N_BLOCKS {
                     server_c0_eval_tmp[eval_s_iter] =
                         barrett_reduce(server_c0_eval_tmp[eval_s_iter] + table_sub[b_i]);
                     let mut temp_eval: i32 =
@@ -1305,11 +1423,12 @@ pub fn dpf_eval_short_server_timings(eval_iterations: usize) {
             }
         }
 
+
         // for s_i in 0..(NUM_SERVERS - 1) {
         for s_i in 0..1 {
             dpf_eval_lwe_seed_block_get_bs(
                 0,
-                &mut b_vec_1d_u8_total[E_BYTES * N_PARAM * s_i..E_BYTES * N_PARAM * (s_i + 1)],
+                &mut b_vec_1d_u8_total[E_BYTES * B_SLICE * s_i..E_BYTES * B_SLICE * (s_i + 1)],
                 &mut s_vecs_1d_u8_eval[..],
                 &seeds[32 * (s_i)..32 * (s_i + 1)],
             );
@@ -1317,22 +1436,22 @@ pub fn dpf_eval_short_server_timings(eval_iterations: usize) {
     }
     //let gen_duration = gen_start.elapsed().as_micros();
     let eval_duration = eval_start.elapsed();
-    println!("EVAL short server Time elapsed is: {:?}", eval_duration);
+    println!("EVAL short server (got mul by N_ROWS {:?})Time elapsed is: {:?}", eval_duration, eval_duration* N_ROWS as u32);
 }
 
 // The computation of the DPF Eval all for the (n-1) servers that have seeds
 pub fn dpf_eval_eval_all_from_seed_timings(eval_iterations: usize) {
     // Setup of variables
-    let a_vec = vec![0i32; NUM_BLOCK * N_PARAM];
+    let a_vec = vec![0i32; BLOCKS*A_SLICE];
 
-    let v_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+    let v_vec_u8 = vec![0u8; V_SLICE_BYTES];
 
     let seeds = [0u8; SEED_IV_LEN * (2 - 1)];
 
-    let mut table_sub = vec![0i32; NUM_BLOCK * N_PARAM];
-    let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * 1];
+    let mut table_sub = vec![0i32; N_BLOCKS];
+    let mut b_vecs_1d_u8_eval = vec![0u8; B_SLICE_BYTES];
 
-    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+    let mut s_vecs_1d_u8_eval = vec![0u8; S_SLICE_BYTES];
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1340,6 +1459,7 @@ pub fn dpf_eval_eval_all_from_seed_timings(eval_iterations: usize) {
     for _iter_test in 0..eval_iterations {
         // Servers compute this
 
+        // N_ROWS, can be reduced by BLOCKS too
         for a_i in 0..1 {
             // Eval code
             // for eval_s_iter in 1..NUM_SERVERS {
@@ -1359,25 +1479,25 @@ pub fn dpf_eval_eval_all_from_seed_timings(eval_iterations: usize) {
     //let gen_duration = gen_start.elapsed().as_micros();
     let eval_duration = eval_start.elapsed();
     println!(
-        "EVAL eval_all_from_seed (got mul N_PARAM: {:?}) Time elapsed is: {:?}",
+        "EVAL eval_all_from_seed (got mul N_ROWS: {:?}) Time elapsed is: {:?}",
         eval_duration,
-        eval_duration* N_PARAM as u32
+        eval_duration* N_ROWS as u32
     );
 }
 
 // The computation of the DPF Eval single for the (n-1) servers that have seeds
 pub fn dpf_eval_single_seed_timings(eval_iterations: usize) {
     // Setup of variables
-    let a_vec = vec![0i32; NUM_BLOCK * N_PARAM];
+    let a_vec = vec![0i32; BLOCKS * A_SLICE];
 
-    let v_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+    let v_vec_u8 = vec![0u8; V_SLICE_BYTES];
 
     let seeds = [0u8; SEED_IV_LEN * (2 - 1)];
 
     let mut recovered_message_t: i32 = 0;
-    let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * 1];
+    let mut b_vecs_1d_u8_eval = vec![0u8; B_SLICE_BYTES];
 
-    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+    let mut s_vecs_1d_u8_eval = vec![0u8; S_SLICE_BYTES];
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1412,13 +1532,13 @@ pub fn dpf_eval_single_seed_timings(eval_iterations: usize) {
 // The computation of the DPF Eval all for the single server that has the correction words
 pub fn dpf_eval_eval_all_from_block_timings(eval_iterations: usize) {
     // Setup of variables
-    let a_vec = vec![0i32; NUM_BLOCK * N_PARAM];
+    let a_vec = vec![0i32; BLOCKS* A_SLICE];
 
-    let b_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM];
-    let s_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
-    let v_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+    let b_vec_1d_u8 = vec![0u8; B_SLICE_BYTES];
+    let s_vec_1d_u8 = vec![0u8; S_SLICE_BYTES];
+    let v_vec_u8 = vec![0u8; V_SLICE_BYTES];
 
-    let mut table_sub = vec![0i32; NUM_BLOCK * N_PARAM];
+    let mut table_sub = vec![0i32; N_BLOCKS];
 
     ////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -1427,6 +1547,7 @@ pub fn dpf_eval_eval_all_from_block_timings(eval_iterations: usize) {
         // Servers compute this
         //Compute beaver triples
 
+        // N_ROWS, can be reduced by BLOCKS too
         for a_i in 0..1 {
             dpf_eval_lwe_block_new_all_sub_timing(
                 a_i,
@@ -1442,20 +1563,20 @@ pub fn dpf_eval_eval_all_from_block_timings(eval_iterations: usize) {
     //let gen_duration = gen_start.elapsed().as_micros();
     let eval_duration = eval_start.elapsed();
     println!(
-        "EVAL eval_all_from_block (got mul N_PARAM: {:?}) Time elapsed is: {:?}",
+        "EVAL eval_all_from_block (got mul N_ROWS: {:?}) Time elapsed is: {:?}",
         eval_duration,
-        eval_duration* N_PARAM as u32
+        eval_duration* N_ROWS as u32
     );
 }
 
 // The computation of the DPF Eval all for the single server that has the correction words
 pub fn dpf_eval_single_block_timings(eval_iterations: usize) {
     // Setup of variables
-    let a_vec = vec![0i32; NUM_BLOCK * N_PARAM];
+    let a_vec = vec![0i32; NUM_BLOCK * A_SLICE];
 
-    let b_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM];
-    let s_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
-    let v_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+    let b_vec_1d_u8 = vec![0u8; B_SLICE_BYTES];
+    let s_vec_1d_u8 = vec![0u8; S_SLICE_BYTES];
+    let v_vec_u8 = vec![0u8; V_SLICE_BYTES];
 
     let mut recovered_message_t: i32 = 0;
 

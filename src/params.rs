@@ -1,9 +1,9 @@
 pub const NUM_SERVERS: usize = 3;
 pub const N_PARAM: usize = 1024;
 
-pub const ROWS: usize = 2;
+pub const ROWS: usize = 4;
 pub const N_ROWS: usize = N_PARAM*ROWS;
-pub const BLOCKS: usize = 4;
+pub const BLOCKS: usize = 8;
 pub const N_BLOCKS: usize = N_PARAM*BLOCKS;
 pub const N_PARAM_LOG2: usize = 10;
 pub const DB_SIZE: usize = N_PARAM * N_PARAM * ROWS*BLOCKS;
@@ -20,10 +20,10 @@ pub const V_SLICE_BYTES: usize = E_BYTES * N_BLOCKS;
 pub const M_SLICE: usize = N_PARAM * N_ROWS;
 pub const M_SLICE_BYTES: usize = E_BYTES * N_PARAM * N_ROWS;
 
-pub const NUM_BLOCK: usize = 32; //65536;
+pub const NUM_BLOCK: usize = 1; //65536;
 //pub const B_BLOCK_SLICE: usize = NUM_SERVERS * B_SLICE;
 //pub const S_BLOCK_SLICE: usize = NUM_SERVERS * S_SLICE;
-pub const V_BLOCK_SLICE: usize = N_BLOCKS;
+//pub const V_BLOCK_SLICE: usize = N_BLOCKS;
 
 //pub const B_BLOCK_SLICE_B: usize = E_BYTES * B_BLOCK_SLICE;
 
