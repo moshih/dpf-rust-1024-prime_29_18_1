@@ -269,12 +269,18 @@ fn block_sq_compact_snip_timings_server(
     println!("BLOCK SEED (SNIP) compact Block Timing");
 
     //let iterations:usize = 1;
-    let eval_iterations: usize = escale * iterations;
+    let eval_iterations: usize = iterations;
+    let eval_iterations_nparam: usize = escale * iterations;
 
     println!("eval_iterations: {}", eval_iterations);
+    println!("eval_iterations_nparam: {}", eval_iterations_nparam);
     println!("eval_all_from_seed iterations: {}", eval_all);
 
-    dpf_eval_every_server_timings(eval_iterations);
+    dpf_eval_every_server_timings_single(eval_iterations);
+    thread::sleep(time::Duration::from_secs(wait_time));
+    dpf_eval_every_server_timings_numblock(eval_iterations);
+    thread::sleep(time::Duration::from_secs(wait_time));
+    dpf_eval_every_server_timings_nparam(eval_iterations);
     thread::sleep(time::Duration::from_secs(wait_time));
     dpf_eval_long_server_timings(eval_iterations);
     thread::sleep(time::Duration::from_secs(wait_time));
@@ -325,7 +331,7 @@ fn main_authtiming() {
     // eval_iterations = escale * s_iterations
     // eval_all
 
-    let iterations: usize = 1;
+    let iterations: usize = 100;
     let bscale: usize = 1;
     let ascale: usize = 1;
     let escale: usize = 1;
@@ -434,22 +440,137 @@ fn main_block_sq_new_compact_correctness() {
     }
 }
 
+// Get Parameters
+fn main_param_block_sq() {
+    println!("--------------------------///--------------------------");
+    println!(
+        "Lattice (RLWE) Parameters are N={}, Q={} noise std dev=10 (base off of 6 bits of noise)",
+        N_PARAM, Q
+    );
+    println!("sqrt array = {}", N_PARAM);
+    println!("expansion factor is = {}", NUM_BLOCK);
+    println!("num servers: {}", NUM_SERVERS);
+
+    // check fill_rand_aes128_modq_nr_2_by_seed
+    //let aes_block:f32 = (4*B_SLICE+4*S_SLICE) as f32;
+
+    //println!("A single AES ctr seed generates {} Bytes ({} KB or {} MB)", aes_block, aes_block/1024.0, aes_block/(1024.0*1024.0));
+
+    //B is length ROWS
+    // S is length ROWS*numrecord/N_PARAM
+
+    /*
+    B vec N_ROWS
+    S vec N_PARAM*rows
+    V vec = N_PARAM*num_block
+
+     */
+
+    // N_PARAM*blocks
+    let Blocks:usize = 32;
+    let N_Blocks:usize = N_PARAM*Blocks;
+
+
+    // size of B vec
+    let ROWS:usize = 1;
+    let N_ROWS:usize = N_PARAM*ROWS;
+
+    let num_coeff = N_ROWS*N_PARAM*Blocks;
+    let record_in_ring_element = 8;
+    let num_entries = num_coeff/N_PARAM*record_in_ring_element;
+    let target_recs = 262144;
+
+    if num_entries == target_recs {
+        println!("Number of records hit!!!");
+    }
+    else {
+        println!("aimed for {} got {}", target_recs, num_entries);
+    }
+
+    // B vec + S vec + V vec
+    let sent_to_server_block: f32 =
+        (E_BYTES * N_ROWS + E_BYTES * N_ROWS * N_PARAM + E_BYTES * N_Blocks) as f32;
+    println!(
+        "A single server gets client DPF data sent {} Bytes ({} KB or {} MB)",
+        sent_to_server_block,
+        sent_to_server_block / 1024.0,
+        sent_to_server_block / (1024.0 * 1024.0)
+    );
+
+    // V vec + (B+S)) seed
+    let sent_to_server_block_seed: f32 = (E_BYTES * N_Blocks + 32) as f32;
+    println!(
+        "Other servers gets client DPF data sent {} Bytes ({} KB or {} MB)",
+        sent_to_server_block_seed,
+        sent_to_server_block_seed / 1024.0,
+        sent_to_server_block_seed / (1024.0 * 1024.0)
+    );
+
+    /*
+    BT_INST1 = 3*N_PARAM+2
+    BT_INST2_A = N_PARAM
+    BT_INST2_B = NOISE_LEN * NOISE_BITS
+     */
+    // (rx,st,sa) seed, noise and sign bit seeds, and BTs
+    let BT_INST1_sq = 3*N_Blocks+2;
+    let BT_INST2_A_sq = N_ROWS;
+    let BT_INST2_B_sq = N_Blocks*NOISE_BITS;
+    let snip_sent_to_server_block: f32 = (32+( N_Blocks * (NOISE_BITS*E_BYTES+1)) + E_BYTES*(BT_INST1_sq+BT_INST2_A_sq+BT_INST2_B_sq)) as f32;
+    //(E_BYTES * (E_BYTES * N_PARAM + 2 + NUM_BLOCK * N_PARAM * NOISE_BITS) + 2 * 32) as f32;
+    println!(
+        "A single server gets SNIP data sent {} Bytes ({} KB or {} MB)",
+        snip_sent_to_server_block,
+        snip_sent_to_server_block / 1024.0,
+        snip_sent_to_server_block / (1024.0 * 1024.0)
+    );
+    // (rx,st,sa) seed, noise and sign bit seeds, and BT seeds
+    let snip_sent_to_server_block_seed: f32 = (32+( N_Blocks * (NOISE_BITS*E_BYTES+1)) + 2*32) as f32;
+    //(2 * 32) as f32;
+    println!(
+        "Other servers gets client DPF data sent {} Bytes ({} KB or {} MB)",
+        snip_sent_to_server_block_seed,
+        snip_sent_to_server_block_seed / 1024.0,
+        snip_sent_to_server_block_seed / (1024.0 * 1024.0)
+    );
+
+    println!("In total:");
+    let total_data_sent_to_server_block = sent_to_server_block + snip_sent_to_server_block;
+    let total_data_sent_to_server_seed = sent_to_server_block_seed + snip_sent_to_server_block_seed;
+    println!(
+        "A single block server gets total data sent {} Bytes ({} KB or {} MB)",
+        total_data_sent_to_server_block,
+        total_data_sent_to_server_block / 1024.0,
+        total_data_sent_to_server_block / (1024.0 * 1024.0)
+    );
+
+    println!(
+        "A single seed server gets total data sent {} Bytes ({} KB or {} MB)",
+        total_data_sent_to_server_seed,
+        total_data_sent_to_server_seed / 1024.0,
+        total_data_sent_to_server_seed / (1024.0 * 1024.0)
+    );
+
+    println!("--------------------------///--------------------------");
+}
+
 // 2^30, 2^32, 2^34, 2^36, 2^38, 2^40
 // has expansion factor of
 // 2^10, 2^12, 2^14, 2^16, 2^18, 2^20
 fn main() {
-    main_param_block();
+    //main_param_block();
+    //println!("-------------------");
+    //main_param_block_sq();
 
     // Basic NTT checks
     //ntt::ntt_base_test();
     //ntt::ntt_mul_test();
 
     // correctness of dpf (no auth or snip)
-    //main_block_sq_new_compact_correctness();
+    main_block_sq_new_compact_correctness();
 
     // Checks that Auth DPF Passes
     //main_check_correctness();
 
     // Auth Timings
-    main_authtiming();
+    //main_authtiming();
 }

@@ -414,7 +414,7 @@ pub fn fill_rand_aes128_modq_nr_6_by_seed(
 
 /*
 This function generated the array of seeds by individual seeds
-Runs faster than generating all from a singel seed
+Runs faster than generating all from a single seed
  */
 pub fn fill_rand_aes128_modq_nr_2_by_seed_sq(
     key: &[u8],
@@ -864,8 +864,8 @@ pub fn g_func_noise(a_vec: &[i32], s_vec: &[i32], output: &mut [i32]) {
     ntt::poly_basemul(output, a_vec, s_vec);
     ntt::poly_invntt(output);
 
-    //noise::add_noise(output);
-    noise::add_pos_noise(output);
+    noise::add_noise(output);
+    //noise::add_pos_noise(output);
 }
 
 pub fn g_func_noise_output(
@@ -1852,7 +1852,7 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact(
     {
         let s_star_u8: &mut [u8] =
             &mut s_vec_u8[E_BYTES * block_lx * N_PARAM..E_BYTES * (block_lx + 1) * N_PARAM];
-        fill_rand_aes128_modq_nr(s_star_u8, 4 * N_PARAM);
+        fill_rand_aes128_modq_nr(s_star_u8, E_BYTES * N_PARAM);
     }
 
     fill_rand_aes128_nr(seeds, SEED_BLOCK);
@@ -1908,10 +1908,14 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact(
     }
     b_vec[block_lx] += 1;
 
+    /*
     let (sign, sample) = noise::lwe_add_sample_noise_8_1_decompose();
     let noise = (1 - sign) * sample + sign * (Q - sample);
     //println!("sign is {}, sample is {}, Q is {}, noise is {}",sign, sample, Q,noise);
     let new_m = noise + m;
+     */
+
+    let new_m = m;
 
     for iter in 0..NUM_BLOCK * N_PARAM {
         v_vec[iter] = Q - v_vec[iter];

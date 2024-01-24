@@ -381,9 +381,24 @@ pub fn combine_bits(input: &[u32], output: &mut [i32]) {
         for bit_iter in 0..NOISE_BITS {
             temp = temp
                 + mul_mod_mont(
-                    input[NOISE_BITS * value_iter + bit_iter] as i32,
-                    POW2I32[bit_iter],
-                );
+                input[NOISE_BITS * value_iter + bit_iter] as i32,
+                POW2I32[bit_iter],
+            );
+        }
+        output[value_iter] = barrett_reduce(temp);
+    }
+}
+
+// server combines bits of their own share
+pub fn combine_bits_numblocks(input: &[u32], output: &mut [i32]) {
+    for value_iter in 0..NOISE_LEN/NUM_BLOCK {
+        let mut temp: i32 = 0;
+        for bit_iter in 0..NOISE_BITS {
+            temp = temp
+                + mul_mod_mont(
+                input[NOISE_BITS * value_iter + bit_iter] as i32,
+                POW2I32[bit_iter],
+            );
         }
         output[value_iter] = barrett_reduce(temp);
     }

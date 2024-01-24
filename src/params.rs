@@ -1,5 +1,10 @@
 pub const NUM_SERVERS: usize = 3;
 pub const N_PARAM: usize = 1024;
+
+pub const ROWS: usize = 4;
+pub const N_ROWS: usize = N_PARAM*ROWS;
+pub const BLOCKS: usize = 8;
+pub const N_BLOCKS: usize = N_PARAM*BLOCKS;
 pub const N_PARAM_LOG2: usize = 10;
 pub const N_DIM: usize = N_PARAM * N_PARAM * NUM_BLOCK;
 
@@ -36,7 +41,7 @@ pub const POW2I32: [i32; 16] = [
 ];
 
 // includes the sign bit
-pub const NOISE_BITS: usize = 6;
+pub const NOISE_BITS: usize = 7;
 pub const NOISE_MAX: usize = usize::pow(2, NOISE_BITS as u32) - 1;
 pub const NOISE_LEN: usize = NUM_BLOCK * N_PARAM;
 

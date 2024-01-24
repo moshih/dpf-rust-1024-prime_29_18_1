@@ -333,7 +333,7 @@ pub fn add_noise_output_sign(input: &mut [i32], output: &mut [i32], sign_out: &m
     let mut temp_vec = vec![0u8; RNDSOURCE_LEN];
     rand::thread_rng().fill_bytes(&mut temp_vec);
 
-    for iter in 0..512 {
+    for iter in 0..INSTANCES {
         let data_rand: u64 = (temp_vec[iter * RNDLEN] as u64)
             | ((temp_vec[iter * RNDLEN + 1] as u64) << 8)
             | ((temp_vec[iter * RNDLEN + 2] as u64) << 16)
