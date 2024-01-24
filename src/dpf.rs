@@ -450,7 +450,9 @@ pub fn fill_rand_aes128_modq_nr_2_by_seed_sq(
         output1[i] = output1[i] % Q;
     }
 
-    let mut temp_seeds = vec![0u8; SEED_IV_LEN * len2 / (E_BYTES * N_PARAM)];
+    let num_seeds = len2 / (E_BYTES * N_PARAM);
+    let mut temp_seeds = vec![0u8; SEED_IV_LEN * num_seeds];
+
     cipher.apply_keystream(&mut temp_seeds);
     //println!("temp_seeds: {:?}", &temp_seeds[0..16]);
     //println!("--temp_seeds: {:?}", &temp_seeds[16..32]);
@@ -928,8 +930,8 @@ pub fn dpf_gen_lwe_seed_base(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -1019,8 +1021,8 @@ pub fn dpf_gen_lwe_seed_sq_base(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -1109,8 +1111,8 @@ pub fn dpf_eval_lwe_base(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -1272,8 +1274,8 @@ pub fn dpf_eval_lwe_base_one(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -1287,11 +1289,6 @@ pub fn dpf_eval_lwe_base_one(
     //SPEEDUP
     let s_vecs: &[i32] = bytemuck::cast_slice(s_vec_1d_u8);
     let s_star: &[i32] = &s_vecs[lx * N_PARAM..(lx + 1) * N_PARAM];
-
-    /*
-        // moshih DELETE DEBUG
-        println!("s_star should be {} {} {}", s_star[0], s_star[1], s_star[2]);
-    */
 
     //println!("seed is {} {} {}",s_star[0] ,s_star[1] ,s_star[2] );
 
@@ -1319,11 +1316,12 @@ pub fn dpf_eval_lwe_base_one_sq(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= (DB_SIZE) {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
+    // moshih check to see if correct
     let lx: usize = l / N_PARAM;
     let ly: usize = l - lx * N_PARAM;
 
@@ -1356,11 +1354,12 @@ pub fn dpf_eval_lwe_base_one_sq_whole_poly(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
+    // N_ROWS or N_PARAM?
     let lx: usize = l / N_PARAM;
 
     let mut g_expand = vec![0i32; N_PARAM];
@@ -1396,8 +1395,8 @@ pub fn dpf_eval_lwe_seed_base_one(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -1451,8 +1450,8 @@ pub fn dpf_eval_lwe_seed_base_one_sq(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -1480,7 +1479,7 @@ pub fn dpf_eval_lwe_seed_base_one_sq(
         E_BYTES * B_SLICE,
         E_BYTES * N_PARAM,
         lx,
-        N_PARAM,
+        N_ROWS,
     );
 
     //SPEEDUP
@@ -1564,45 +1563,6 @@ pub fn dpf_eval_lwe_seed_sq(
     dpf_eval_lwe_seed_base_one_sq(l, m, &a_vec, b_vec_u8, s_vec_1d_u8, &seed, &v_vec_u8);
 }
 
-//TODO: Overall Block to have per server data be contiguous
-#[allow(dead_code)]
-pub fn dpf_gen_lwe_seed_block(
-    l: usize,
-    m: i32,
-    a_vec: &[i32],
-    b_vecs_u8: &mut [u8],
-    s_vecs_1d_u8: &mut [u8],
-    v_vec_u8: &mut [u8],
-    seeds: &mut [u8],
-) {
-    let block_num = l / (N_PARAM * N_PARAM);
-    let block_l = l % (N_PARAM * N_PARAM);
-
-    for iter in 0..NUM_BLOCK {
-        if iter == block_num {
-            dpf_gen_lwe_seed_base(
-                block_l,
-                m,
-                &a_vec,
-                &mut b_vecs_u8[iter * B_BLOCK_SLICE_B..(iter + 1) * B_BLOCK_SLICE_B],
-                &mut s_vecs_1d_u8[iter * S_BLOCK_SLICE_B..(iter + 1) * S_BLOCK_SLICE_B],
-                &mut v_vec_u8[iter * V_BLOCK_SLICE_B..(iter + 1) * V_BLOCK_SLICE_B],
-                &mut seeds[iter * SEED_BLOCK..(iter + 1) * SEED_BLOCK],
-            );
-        } else {
-            dpf_gen_lwe_seed_base(
-                block_l,
-                0,
-                &a_vec,
-                &mut b_vecs_u8[iter * B_BLOCK_SLICE_B..(iter + 1) * B_BLOCK_SLICE_B],
-                &mut s_vecs_1d_u8[iter * S_BLOCK_SLICE_B..(iter + 1) * S_BLOCK_SLICE_B],
-                &mut v_vec_u8[iter * V_BLOCK_SLICE_B..(iter + 1) * V_BLOCK_SLICE_B],
-                &mut seeds[iter * SEED_BLOCK..(iter + 1) * SEED_BLOCK],
-            );
-        }
-    }
-}
-
 #[allow(dead_code)]
 pub fn dpf_gen_lwe_seed_block_new(
     l: usize,
@@ -1621,8 +1581,8 @@ pub fn dpf_gen_lwe_seed_block_new(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -1705,7 +1665,6 @@ pub fn dpf_gen_lwe_seed_block_new(
     v_vec[V_SLICE * block_num + block_ly] += new_m;
 }
 
-#[allow(dead_code)]
 pub fn dpf_gen_lwe_seed_block_new_sq(
     l: usize,
     m: i32,
@@ -1723,8 +1682,8 @@ pub fn dpf_gen_lwe_seed_block_new_sq(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -1811,7 +1770,6 @@ pub fn dpf_gen_lwe_seed_block_new_sq(
             v_vec[V_SLICE * bl_iter + iter] = Q - v_vec[V_SLICE * bl_iter + iter];
         }
     }
-
     v_vec[V_SLICE * block_num + block_ly] += new_m;
 }
 
@@ -1830,8 +1788,8 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= (DB_SIZE) {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -1840,8 +1798,8 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact(
         return;
     }
 
-    let block_num = l / (N_PARAM * N_PARAM);
-    let block_l = l % (N_PARAM * N_PARAM);
+    let block_num = l / (N_PARAM * N_ROWS);
+    let block_l = l % (N_PARAM * N_ROWS);
 
     //let block_lx = l/(NUM_BLOCK*N_PARAM);
     //let block_ly = l%(NUM_BLOCK*N_PARAM);
@@ -1864,16 +1822,16 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact(
 
     let v_vec: &mut [i32] = bytemuck::cast_slice_mut(v_vec_u8);
 
-    for iter in 0..NUM_BLOCK {
+    for iter in 0..BLOCKS {
         g_func_noise(
-            &a_vec[A_SLICE * iter..A_SLICE * (iter + 1)],
+            &a_vec[N_PARAM * iter..N_PARAM * (iter + 1)],
             &s_star,
-            &mut v_vec[V_SLICE * iter..V_SLICE * (iter + 1)],
+            &mut v_vec[N_PARAM * iter..N_PARAM * (iter + 1)],
         );
     }
 
-    let mut b_vec_u8_temp = vec![0u8; E_BYTES * N_PARAM];
-    let mut s_vec_u8_temp = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+    let mut b_vec_u8_temp = vec![0u8; E_BYTES * B_SLICE];
+    let mut s_vec_u8_temp = vec![0u8; E_BYTES * S_SLICE];
 
     // TODO: FIX for compact
     for iter in 0..(NUM_SERVERS - 1) {
@@ -1917,11 +1875,11 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact(
 
     let new_m = m;
 
-    for iter in 0..NUM_BLOCK * N_PARAM {
+    for iter in 0..V_SLICE {
         v_vec[iter] = Q - v_vec[iter];
     }
 
-    v_vec[V_SLICE * block_num + block_ly] += new_m;
+    v_vec[N_PARAM * block_num + block_ly] += new_m;
 }
 
 #[allow(dead_code)]
@@ -1941,8 +1899,8 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_snip(
         println!("There must be at least 2 servers!\n");
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
     }
 
     if m >= Q {
@@ -2069,16 +2027,16 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_veri(
         println!("There must be at least 2 servers!\n");
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
     }
 
     if m >= Q {
         println!("m is too large! {} >= {}\n", m, Q);
     }
 
-    let block_num = l / (N_PARAM * N_PARAM);
-    let block_l = l % (N_PARAM * N_PARAM);
+    let block_num = l / (N_PARAM * N_ROWS);
+    let block_l = l % (N_PARAM * N_ROWS);
 
     let block_lx: usize = block_l / N_PARAM;
     let block_ly: usize = block_l - block_lx * N_PARAM;
@@ -2098,14 +2056,14 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_veri(
 
     let v_vec: &mut [i32] = bytemuck::cast_slice_mut(v_vec_u8);
 
-    for iter in 0..NUM_BLOCK {
+    for iter in 0..BLOCKS {
         if enable_veri {
             g_func_noise_output_sign(
-                &a_vec[A_SLICE * iter..A_SLICE * (iter + 1)],
+                &a_vec[N_PARAM * iter..N_PARAM * (iter + 1)],
                 &s_star,
-                &mut v_vec[V_SLICE * iter..V_SLICE * (iter + 1)],
-                &mut noise_vec[V_SLICE * iter..V_SLICE * (iter + 1)],
-                &mut noise_sign_i8[V_SLICE * iter..V_SLICE * (iter + 1)],
+                &mut v_vec[N_PARAM * iter..N_PARAM * (iter + 1)],
+                &mut noise_vec[N_PARAM * iter..N_PARAM * (iter + 1)],
+                &mut noise_sign_i8[N_PARAM * iter..N_PARAM * (iter + 1)],
             );
         } else {
             g_func_noise(
@@ -2123,8 +2081,8 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_veri(
         gen_rand_coeff_seeds(coeff_seeds, &mut rx_seed, &mut st_seed, &mut sa_seed);
     }
 
-    let mut b_vec_u8_temp = vec![0u8; E_BYTES * N_PARAM];
-    let mut s_vec_u8_temp = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+    let mut b_vec_u8_temp = vec![0u8; E_BYTES * B_SLICE];
+    let mut s_vec_u8_temp = vec![0u8; E_BYTES * S_SLICE];
 
     for iter in 0..(NUM_SERVERS - 1) {
         fill_rand_aes128_modq_nr_2_by_seed_sq(
@@ -2167,11 +2125,11 @@ pub fn dpf_gen_lwe_seed_block_new_sq_compact_veri(
 
     let new_m = m;
 
-    for iter in 0..NUM_BLOCK * N_PARAM {
+    for iter in 0..V_SLICE {
         v_vec[iter] = Q - v_vec[iter];
     }
 
-    v_vec[V_SLICE * block_num + block_ly] += new_m;
+    v_vec[N_PARAM * block_num + block_ly] += new_m;
 }
 
 #[allow(dead_code)]
@@ -2192,8 +2150,8 @@ pub fn dpf_gen_lwe_seed_block_new_sq_double_expand_compact(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -2297,8 +2255,8 @@ pub fn dpf_gen_lwe_seed_block_new_sq_double_expand(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
@@ -2390,41 +2348,6 @@ pub fn dpf_gen_lwe_seed_block_new_sq_double_expand(
     v_vec[V_SLICE * block_num + block_ly] += new_m;
 }
 
-#[allow(dead_code)]
-pub fn dpf_eval_lwe_block(
-    l: usize,
-    _m: &mut i32,
-    a_vec: &[i32],
-    b_vecs_u8: &[u8],
-    s_vecs_1d_u8: &[u8],
-    v_vec_u8: &[u8],
-) -> i32 {
-    let block_num = l / (N_PARAM * N_PARAM);
-    let block_l = l % (N_PARAM * N_PARAM);
-
-    let mut recovered_message_t: i32 = 0;
-    let mut recovered_message_total: i32 = 0;
-
-    //println!("---------------------------");
-    for eval_s_iter in 0..NUM_SERVERS {
-        dpf_eval_lwe_base_one(
-            block_l,
-            &mut recovered_message_t,
-            &a_vec,
-            &b_vecs_u8[(block_num * B_BLOCK_SLICE_B + E_BYTES * b_s(eval_s_iter))
-                ..(block_num * B_BLOCK_SLICE_B + E_BYTES * b_s(eval_s_iter + 1))],
-            &s_vecs_1d_u8[(block_num * S_BLOCK_SLICE_B + E_BYTES * s_s(eval_s_iter))
-                ..(block_num * S_BLOCK_SLICE_B + E_BYTES * s_s(eval_s_iter + 1))],
-            &v_vec_u8[block_num * V_BLOCK_SLICE_B..(block_num + 1) * V_BLOCK_SLICE_B],
-        );
-        //println!("loop partials is {}", recovered_message_t);
-        recovered_message_total = recovered_message_total + recovered_message_t;
-    }
-
-    return recovered_message_total;
-}
-
-#[allow(dead_code)]
 pub fn dpf_eval_lwe_seed_block(
     l: usize,
     m: &mut i32,
@@ -2434,8 +2357,8 @@ pub fn dpf_eval_lwe_seed_block(
     seed: &[u8],
     v_vec_u8: &[u8],
 ) {
-    let block_num: usize = l / (N_PARAM * N_PARAM);
-    let block_l: usize = l % (N_PARAM * N_PARAM);
+    let block_num: usize = l / (N_PARAM * N_ROWS);
+    let block_l: usize = l % (N_PARAM * N_ROWS);
 
     let block_lx: usize = block_l / N_PARAM;
 
@@ -2445,9 +2368,9 @@ pub fn dpf_eval_lwe_seed_block(
         b_vec_u8,
         s_vec_1d_u8,
         E_BYTES * B_SLICE,
-        E_BYTES * N_PARAM,
+        E_BYTES * S_SLICE,
         block_lx,
-        N_PARAM,
+        N_ROWS,
     );
 
     dpf_eval_lwe_base_one_sq(
@@ -2456,7 +2379,7 @@ pub fn dpf_eval_lwe_seed_block(
         &a_vec[block_num * N_PARAM..(block_num + 1) * N_PARAM],
         &b_vec_u8[..],
         &s_vec_1d_u8[..],
-        &v_vec_u8[block_num * E_BYTES * V_SLICE..(block_num + 1) * E_BYTES * V_SLICE],
+        &v_vec_u8[block_num * E_BYTES * N_PARAM..(block_num + 1) * E_BYTES * N_PARAM],
     );
 }
 
@@ -2466,7 +2389,7 @@ pub fn dpf_eval_lwe_seed_block_get_bs(
     s_vec_1d_u8: &mut [u8],
     seed: &[u8],
 ) {
-    let block_l: usize = l % (N_PARAM * N_PARAM);
+    let block_l: usize = l % (N_PARAM * N_ROWS);
 
     let block_lx: usize = block_l / N_PARAM;
 
@@ -2476,12 +2399,13 @@ pub fn dpf_eval_lwe_seed_block_get_bs(
         b_vec_u8,
         s_vec_1d_u8,
         E_BYTES * B_SLICE,
-        E_BYTES * N_PARAM,
+        E_BYTES * S_SLICE,
         block_lx,
-        N_PARAM,
+        N_ROWS,
     );
 }
 
+/*
 #[allow(dead_code)]
 pub fn dpf_eval_lwe_seed_block_double_expand(
     l: usize,
@@ -2530,6 +2454,8 @@ pub fn dpf_eval_lwe_seed_block_double_expand(
     */
 }
 
+ */
+
 #[allow(dead_code)]
 pub fn dpf_eval_lwe_block_new(
     l: usize,
@@ -2546,13 +2472,13 @@ pub fn dpf_eval_lwe_block_new(
         return;
     }
 
-    if l >= (N_PARAM * N_PARAM * NUM_BLOCK) {
-        println!("l is too large! {} >= {}\n", l, N_DIM);
+    if l >= DB_SIZE {
+        println!("l is too large! {} >= {}\n", l, DB_SIZE);
         return;
     }
 
-    let block_num = l / (N_PARAM * N_PARAM);
-    let block_l = l % (N_PARAM * N_PARAM);
+    let block_num = l / (N_PARAM * N_ROWS);
+    let block_l = l % (N_PARAM * N_ROWS);
 
     let block_lx: usize = block_l / N_PARAM;
     let block_ly: usize = block_l - block_lx * N_PARAM;
@@ -2577,7 +2503,7 @@ pub fn dpf_eval_lwe_block_new(
     //let bv = Wrapping(b_vec[block_lx]) * Wrapping(v_vec[V_SLICE * block_num + block_ly]);
     //*m = g_expand[block_ly] + bv.0;
 
-    let bv: i32 = mul_mod_mont(b_vec[block_lx], v_vec[V_SLICE * block_num + block_ly]);
+    let bv: i32 = mul_mod_mont(b_vec[block_lx], v_vec[N_PARAM * block_num + block_ly]);
     *m = g_expand[block_ly] + bv;
 }
 
@@ -2643,11 +2569,11 @@ pub fn dpf_eval_lwe_block_new_all_sub(
     }
     //for l_iter in (0..N_PARAM * N_PARAM * NUM_BLOCK).step_by(N_PARAM)
     //let l_iter:usize = N_PARAM * index;
-    for blk_i in 0..NUM_BLOCK {
-        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_PARAM;
+    for blk_i in 0..BLOCKS {
+        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_ROWS;
         {
-            let block_num = l_iter / (N_PARAM * N_PARAM);
-            let block_l = l_iter % (N_PARAM * N_PARAM);
+            let block_num = l_iter / (N_PARAM * N_ROWS);
+            let block_l = l_iter % (N_PARAM * N_ROWS);
 
             let block_lx: usize = block_l / N_PARAM;
 
@@ -2668,7 +2594,7 @@ pub fn dpf_eval_lwe_block_new_all_sub(
             let mut bv_i32: i32;
 
             for ly_iter in 0..N_PARAM {
-                bv_i32 = mul_mod_mont(b_vec[block_lx], v_vec[V_SLICE * block_num + ly_iter]);
+                bv_i32 = mul_mod_mont(b_vec[block_lx], v_vec[N_PARAM * block_num + ly_iter]);
 
                 //m[ly_iter + block_num * N_PARAM * N_PARAM + block_lx * N_PARAM] = g_expand[ly_iter] + bv_i32;
                 m[ly_iter + blk_i * N_PARAM] = g_expand[ly_iter] + bv_i32;
@@ -2760,7 +2686,7 @@ pub fn dpf_eval_lwe_seed_block_all(
             E_BYTES * B_SLICE,
             E_BYTES * N_PARAM,
             block_lx,
-            N_PARAM,
+            N_ROWS,
         );
 
         dpf_eval_lwe_base_one_sq_whole_poly(
@@ -2786,11 +2712,11 @@ pub fn dpf_eval_lwe_seed_block_all_sub(
 ) {
     //for l_iter in (0..N_PARAM * N_PARAM * NUM_BLOCK).step_by(N_PARAM)
     //let l_iter:usize = index*N_PARAM;
-    for blk_i in 0..NUM_BLOCK {
-        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_PARAM;
+    for blk_i in 0..BLOCKS {
+        let l_iter: usize = index * N_PARAM + blk_i * N_PARAM * N_ROWS;
         {
-            let block_num = l_iter / (N_PARAM * N_PARAM);
-            let block_l = l_iter % (N_PARAM * N_PARAM);
+            let block_num = l_iter / (N_PARAM * N_ROWS);
+            let block_l = l_iter % (N_PARAM * N_ROWS);
 
             let block_lx: usize = block_l / N_PARAM;
 
@@ -2809,9 +2735,9 @@ pub fn dpf_eval_lwe_seed_block_all_sub(
                 b_vec_u8,
                 s_vec_1d_u8,
                 E_BYTES * B_SLICE,
-                E_BYTES * N_PARAM,
+                E_BYTES * S_SLICE,
                 block_lx,
-                N_PARAM,
+                N_ROWS,
             );
 
 
@@ -2822,7 +2748,7 @@ pub fn dpf_eval_lwe_seed_block_all_sub(
                 &a_vec[block_num * N_PARAM..(block_num + 1) * N_PARAM],
                 &b_vec_u8[..],
                 &s_vec_1d_u8[..],
-                &v_vec_u8[block_num * E_BYTES * V_SLICE..(block_num + 1) * E_BYTES * V_SLICE],
+                &v_vec_u8[block_num * E_BYTES * N_PARAM..(block_num + 1) * E_BYTES * N_PARAM],
             );
         }
     }

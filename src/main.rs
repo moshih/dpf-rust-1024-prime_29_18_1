@@ -41,7 +41,7 @@ fn main_check_correctness() {
     // Setup of variables
     let buffer: i32 = 128;
     let ori_message: i32 = 101;
-    let index: usize = 0; //2*512*512+13;//2000;
+    let index: usize = N_BLOCKS*N_ROWS-1; //2*512*512+13;//2000;
     let (
         mut b_vec_1d_u8,
         mut s_vec_1d_u8,
@@ -56,6 +56,7 @@ fn main_check_correctness() {
     ) = set_up_init_vars(buffer, ori_message, index);
 
     let setup_duration = start.elapsed();
+    println!("message is {}", message);
     println!("setup_duration Time elapsed is: {:?}", setup_duration);
 
     println!("GEN");
@@ -135,6 +136,7 @@ fn main_check_correctness() {
 
     let eval0_duration = start.elapsed();
     println!("eval0_duration Time elapsed is: {:?}", eval0_duration);
+
 
     println!("EVAL 1");
     ////////////////////////////////////////////////////////////////////////////////////
@@ -293,7 +295,6 @@ fn block_sq_compact_snip_timings_server(
     println!("----------------------------------------------------");
 }
 
-// moshih
 fn server_eval_single(
     eval: usize,
     wait_time: u64,
@@ -357,21 +358,23 @@ fn main_authtiming() {
 
 fn main_block_sq_new_compact_correctness() {
     println!("----main_block_sq_new_compact_correctness----");
-    let mut a_vec = vec![0i32; NUM_BLOCK * N_PARAM];
+    let mut a_vec = vec![0i32; BLOCKS*A_SLICE];
 
-    let mut b_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM];
-    let mut s_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
-    let mut v_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+    let mut b_vec_1d_u8 = vec![0u8; B_SLICE_BYTES];
+    let mut s_vec_1d_u8 = vec![0u8; S_SLICE_BYTES];
+    let mut v_vec_u8 = vec![0u8; V_SLICE_BYTES];
 
     let mut a_vec_u8: &mut [u8] = bytemuck::cast_slice_mut(&mut a_vec[..]);
-    fill_rand_aes128_modq_nr(&mut a_vec_u8, E_BYTES * NUM_BLOCK * N_PARAM);
+    fill_rand_aes128_modq_nr(&mut a_vec_u8, E_BYTES * BLOCKS * A_SLICE);
 
     let mut seeds = [0u8; 32 * (NUM_SERVERS - 1)];
 
     let buffer: i32 = 128;
     let ori_message: i32 = 101;
-    let message: i32 = (ori_message << 9) + buffer;
-    let index: usize = 0; //2*512*512+13;//2000;
+    let lower_bits = 9;
+    let message: i32 = (ori_message << lower_bits) + buffer;
+    let mut index: usize = 0;//N_BLOCKS*N_ROWS-1; //2*512*512+13;//2000;
+    println!("index is {}", index);
 
     println!("GEN");
     dpf_gen_lwe_seed_block_new_sq_compact(
@@ -384,12 +387,13 @@ fn main_block_sq_new_compact_correctness() {
         &mut seeds[..],
     );
 
+    index = 1;
     println!("EVALs");
     {
         let mut recovered_message_t: i32 = 0;
         let mut recovered_message_total: i32 = 0;
-        let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM];
-        let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+        let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * B_SLICE];
+        let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * S_SLICE];
 
         for eval_s_iter in 0..(NUM_SERVERS - 1) {
             //b_vecs_1d_u8_eval.fill(0);
@@ -431,7 +435,7 @@ fn main_block_sq_new_compact_correctness() {
 
         println!(
             "seed loop recovered is {}, noise is {} or {}",
-            (recovered_message_total % Q) >> 9,
+            (recovered_message_total % Q) >> lower_bits,
             modq(recovered_message_total - message),
             -1 * modq(message - recovered_message_total)
         );
@@ -440,7 +444,113 @@ fn main_block_sq_new_compact_correctness() {
     }
 }
 
+
+fn main_block_sq_new_compact_correctness_all() {
+    println!("----main_block_sq_new_compact_correctness----");
+    let mut a_vec = vec![0i32; BLOCKS*A_SLICE];
+
+    let mut b_vec_1d_u8 = vec![0u8; B_SLICE_BYTES];
+    let mut s_vec_1d_u8 = vec![0u8; S_SLICE_BYTES];
+    let mut v_vec_u8 = vec![0u8; V_SLICE_BYTES];
+
+    let mut a_vec_u8: &mut [u8] = bytemuck::cast_slice_mut(&mut a_vec[..]);
+    fill_rand_aes128_modq_nr(&mut a_vec_u8, E_BYTES * BLOCKS * A_SLICE);
+
+    let mut seeds = [0u8; 32 * (NUM_SERVERS - 1)];
+
+    let buffer: i32 = 128;
+    let ori_message: i32 = 101;
+    let lower_bits = 9;
+    let message: i32 = (ori_message << lower_bits) + buffer;
+    let mut index: usize = 0; //2*512*512+13;//2000;
+
+    let ori_index = index;
+    println!("GEN");
+    dpf_gen_lwe_seed_block_new_sq_compact(
+        index,
+        message,
+        &a_vec[..],
+        &mut b_vec_1d_u8[..],
+        &mut s_vec_1d_u8[..],
+        &mut v_vec_u8[..],
+        &mut seeds[..],
+    );
+
+    println!("EVALs");
+    for index in 0..N_ROWS*N_BLOCKS {
+        let mut recovered_message_t: i32 = 0;
+        let mut recovered_message_total: i32 = 0;
+        let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * B_SLICE];
+        let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * S_SLICE];
+
+        for eval_s_iter in 0..(NUM_SERVERS - 1) {
+            //b_vecs_1d_u8_eval.fill(0);
+            //s_vecs_1d_u8_eval.fill(0);
+            for i in 0..b_vecs_1d_u8_eval.len() {
+                b_vecs_1d_u8_eval[i] = 0;
+            }
+            for i in 0..s_vecs_1d_u8_eval.len() {
+                s_vecs_1d_u8_eval[i] = 0;
+            }
+
+            dpf_eval_lwe_seed_block(
+                index,
+                &mut recovered_message_t,
+                &a_vec,
+                &mut b_vecs_1d_u8_eval[..],
+                &mut s_vecs_1d_u8_eval[..],
+                &seeds[32 * (eval_s_iter)..32 * (eval_s_iter + 1)],
+                &v_vec_u8,
+            );
+            //println!("seed loop partials is {}", recovered_message_t);
+            recovered_message_total =
+                (Wrapping(recovered_message_total) + Wrapping(recovered_message_t)).0;
+        }
+        //println!("----------dpf_eval_lwe_block_new-----------------");
+        for _eval_s_iter in (NUM_SERVERS - 1)..NUM_SERVERS {
+            dpf_eval_lwe_block_new(
+                index,
+                &mut recovered_message_t,
+                &a_vec,
+                &b_vec_1d_u8[..],
+                &s_vec_1d_u8[..],
+                &v_vec_u8,
+            );
+            //println!("loop partials is {}", recovered_message_t);
+            recovered_message_total =
+                (Wrapping(recovered_message_total) + Wrapping(recovered_message_t)).0;
+        }
+
+        let value = modq(recovered_message_total)>> lower_bits;
+        if index == ori_index {
+            if value != ori_message {
+                println!("at {}: wrong message got {} instead of {}", index, value, ori_message);
+                break;
+            }
+
+        }
+        else {
+            if value != 0 {
+                println!("at {}: wrong zero got {} instead of {}", index, value, 0);
+                break;
+            }
+        }
+        /*
+        println!(
+            "seed loop recovered is {}, noise is {} or {}",
+            (recovered_message_total % Q) >> lower_bits,
+            modq(recovered_message_total - message),
+            -1 * modq(message - recovered_message_total)
+        );
+
+         */
+        //println!("init is {}", (recovered_message_total % Q));
+        //println!("//////////////////////////////////////////////");
+    }
+}
+
 // Get Parameters
+/*
 fn main_param_block_sq() {
     println!("--------------------------///--------------------------");
     println!(
@@ -552,6 +662,7 @@ fn main_param_block_sq() {
 
     println!("--------------------------///--------------------------");
 }
+*/
 
 // 2^30, 2^32, 2^34, 2^36, 2^38, 2^40
 // has expansion factor of
@@ -566,10 +677,10 @@ fn main() {
     //ntt::ntt_mul_test();
 
     // correctness of dpf (no auth or snip)
-    main_block_sq_new_compact_correctness();
+    //main_block_sq_new_compact_correctness();
 
     // Checks that Auth DPF Passes
-    //main_check_correctness();
+    main_check_correctness();
 
     // Auth Timings
     //main_authtiming();

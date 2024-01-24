@@ -1,4 +1,4 @@
-use crate::params::{N_PARAM, NOISE_MAX};
+use crate::params::{N_PARAM, N_ROWS, NOISE_MAX};
 use rand::RngCore;
 use std::num::Wrapping;
 
@@ -204,7 +204,7 @@ pub fn add_noise(input: &mut [i32]) {
             | ((temp_vec[iter * RNDLEN + 5] as u64) << 40)
             | ((temp_vec[iter * RNDLEN + 6] as u64) << 48)
             | (((temp_vec[iter * RNDLEN + 7] & 127) as u64) << 56);
-        let sign: u8 = temp_vec[iter * RNDLEN + 7] >> 7;
+        let sign: i32 = (temp_vec[iter * RNDLEN + 7] >> 7) as i32;
 
         let mut sample: u8 = 0;
         let mut temp: u64;
@@ -213,9 +213,13 @@ pub fn add_noise(input: &mut [i32]) {
             sample += (temp >> 63) as u8;
         }
 
-        let mut wrapped_sample: Wrapping<u64> = Wrapping(0u64) - Wrapping(sign as u64);
-        wrapped_sample = (wrapped_sample ^ Wrapping(sample as u64)) + Wrapping(sign as u64);
-        input[iter] += wrapped_sample.0 as i32;
+        let sample_i32 = sample as i32;
+        let signed_sample:i32 = sample_i32*(1-sign)-sample_i32*sign;
+        input[iter] += signed_sample;
+
+        //let mut wrapped_sample: Wrapping<u32> = Wrapping(0u32) - Wrapping(sign as u32);
+        //wrapped_sample = (wrapped_sample ^ Wrapping(sample as u32)) + Wrapping(sign as u32);
+        //input[iter] += wrapped_sample.0 as i32;
     }
 }
 

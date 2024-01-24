@@ -7,10 +7,7 @@ use crate::dpf::{
     fill_rand_aes128_modq_nr_6_by_seed, fill_rand_aes128_nr,
 };
 use crate::ntt::{barrett_reduce, mul_mod_mont};
-use crate::params::{
-    BT_INST1, BT_INST2_A, BT_INST2_B, E_BYTES, NOISE_BITS, NOISE_LEN, NUM_BLOCK, NUM_SERVERS,
-    N_PARAM, Q, SEED_IV_LEN,
-};
+use crate::params::{BT_INST1, BT_INST2_A, BT_INST2_B, E_BYTES, NOISE_BITS, NOISE_LEN, NUM_BLOCK, NUM_SERVERS, N_PARAM, Q, SEED_IV_LEN, BLOCKS, A_SLICE, B_SLICE, N_BLOCKS, S_SLICE, N_ROWS, B_SLICE_BYTES, S_SLICE_BYTES, V_SLICE_BYTES};
 use crate::snip::{
     combine_bits, gen_r1_vec_sub, gen_r2_vec_sub, gen_r3_vec_sub, get_rand_coeff_seeds,
     mod_inverse, mul_shares_p2, separate_bits,
@@ -33,16 +30,16 @@ pub fn set_up_init_vars(
     usize,
 ) {
     // Setup of variables
-    let mut a_vec = vec![0i32; NUM_BLOCK * N_PARAM];
+    let mut a_vec = vec![0i32; BLOCKS * A_SLICE];
 
-    let b_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM];
-    let s_vec_1d_u8 = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
-    let v_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+    let b_vec_1d_u8 = vec![0u8; B_SLICE_BYTES];
+    let s_vec_1d_u8 = vec![0u8; S_SLICE_BYTES];
+    let v_vec_u8 = vec![0u8; V_SLICE_BYTES];
     let noise_i32 = vec![0i32; NOISE_LEN];
-    let noise_sign_i8 = vec![0i8; NUM_BLOCK * N_PARAM];
+    let noise_sign_i8 = vec![0i8; NOISE_LEN];
 
     let mut a_vec_u8: &mut [u8] = bytemuck::cast_slice_mut(&mut a_vec[..]);
-    fill_rand_aes128_modq_nr(&mut a_vec_u8, E_BYTES * NUM_BLOCK * N_PARAM);
+    fill_rand_aes128_modq_nr(&mut a_vec_u8, E_BYTES * BLOCKS * A_SLICE);
 
     let seeds = vec![0u8; SEED_IV_LEN * (NUM_SERVERS - 1)];
     let coeff_seeds = vec![0u8; SEED_IV_LEN];
@@ -394,22 +391,22 @@ pub fn servers_auth_init_and_prep_eval(
     let mut r3_seed = [0u8; SEED_IV_LEN];
     get_rand_coeff_seeds(&coeff_seeds, &mut r1_seed, &mut r2_seed, &mut r3_seed);
 
-    let mut t_c0_alpha = vec![0i32; NUM_SERVERS * N_PARAM];
-    let mut t_c1_alpha = vec![0i32; NUM_SERVERS * N_PARAM];
-    let mut t_c2_alpha = vec![0i32; NUM_SERVERS * N_PARAM];
+    let mut t_c0_alpha = vec![0i32; NUM_SERVERS * B_SLICE];
+    let mut t_c1_alpha = vec![0i32; NUM_SERVERS * B_SLICE];
+    let mut t_c2_alpha = vec![0i32; NUM_SERVERS * B_SLICE];
 
-    let mut r1_vec_u8 = vec![0u8; E_BYTES * NUM_BLOCK * N_PARAM];
+    let mut r1_vec_u8 = vec![0u8; E_BYTES * NOISE_LEN];
 
     // calculating eval part
     let mut r_c0_eval = vec![0i32; NUM_SERVERS];
     let mut r_c1_eval = vec![0i32; NUM_SERVERS];
     let mut r_c2_eval = vec![0i32; NUM_SERVERS];
 
-    let mut table_sub = vec![0i32; NUM_BLOCK * N_PARAM];
-    let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * NUM_SERVERS];
-    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+    let mut table_sub = vec![0i32; N_BLOCKS];
+    let mut b_vecs_1d_u8_eval = vec![0u8; E_BYTES * B_SLICE * NUM_SERVERS];
+    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * S_SLICE];
 
-    for a_i in 0..N_PARAM {
+    for a_i in 0..N_ROWS {
         let mut r_e_c0_tmp = [0i32; NUM_SERVERS];
         let mut r_e_c1_tmp = [0i32; NUM_SERVERS];
         let mut r_e_c2_tmp = [0i32; NUM_SERVERS];
@@ -458,19 +455,21 @@ pub fn servers_auth_init_and_prep_eval(
                 r_e_c2_tmp[server_i] = barrett_reduce(temp + r_e_c2_tmp[server_i]);
             }
 
-            // Eval code
-            server_c0_eval_tmp[0] = barrett_reduce(server_c0_eval_tmp[0] + table_sub[b_i]);
-            let mut temp_eval: i32 = barrett_reduce(mul_mod_mont(table_sub[b_i], r1_vec[b_i]));
-            server_c1_eval_tmp[0] = barrett_reduce(server_c1_eval_tmp[0] + temp_eval);
+            if b_i < N_BLOCKS  {
+                // Eval code
+                server_c0_eval_tmp[0] = barrett_reduce(server_c0_eval_tmp[0] + table_sub[b_i]);
+                let mut temp_eval: i32 = barrett_reduce(mul_mod_mont(table_sub[b_i], r1_vec[b_i]));
+                server_c1_eval_tmp[0] = barrett_reduce(server_c1_eval_tmp[0] + temp_eval);
 
-            temp_eval = barrett_reduce(mul_mod_mont(temp_eval, r1_vec[b_i]));
-            server_c2_eval_tmp[0] = barrett_reduce(server_c2_eval_tmp[0] + temp_eval);
+                temp_eval = barrett_reduce(mul_mod_mont(temp_eval, r1_vec[b_i]));
+                server_c2_eval_tmp[0] = barrett_reduce(server_c2_eval_tmp[0] + temp_eval);
+            }
         }
 
         for server_i in 0..NUM_SERVERS {
-            t_c0_alpha[N_PARAM * server_i + a_i] = r_e_c0_tmp[server_i];
-            t_c1_alpha[N_PARAM * server_i + a_i] = r_e_c1_tmp[server_i];
-            t_c2_alpha[N_PARAM * server_i + a_i] = r_e_c2_tmp[server_i];
+            t_c0_alpha[B_SLICE * server_i + a_i] = r_e_c0_tmp[server_i];
+            t_c1_alpha[B_SLICE * server_i + a_i] = r_e_c1_tmp[server_i];
+            t_c2_alpha[B_SLICE * server_i + a_i] = r_e_c2_tmp[server_i];
         }
 
         // Eval code
@@ -498,16 +497,16 @@ pub fn servers_auth_init_and_prep_eval(
                 &v_vec_u8,
             );
 
-            for b_i in 0..NOISE_LEN {
-                server_c0_eval_tmp[eval_s_iter] =
-                    barrett_reduce(server_c0_eval_tmp[eval_s_iter] + table_sub[b_i]);
-                let mut temp_eval: i32 = barrett_reduce(mul_mod_mont(table_sub[b_i], r1_vec[b_i]));
-                server_c1_eval_tmp[eval_s_iter] =
-                    barrett_reduce(server_c1_eval_tmp[eval_s_iter] + temp_eval);
+            for b_i in 0..N_BLOCKS {
+                    server_c0_eval_tmp[eval_s_iter] =
+                        barrett_reduce(server_c0_eval_tmp[eval_s_iter] + table_sub[b_i]);
+                    let mut temp_eval: i32 = barrett_reduce(mul_mod_mont(table_sub[b_i], r1_vec[b_i]));
+                    server_c1_eval_tmp[eval_s_iter] =
+                        barrett_reduce(server_c1_eval_tmp[eval_s_iter] + temp_eval);
 
-                temp_eval = barrett_reduce(mul_mod_mont(temp_eval, r1_vec[b_i]));
-                server_c2_eval_tmp[eval_s_iter] =
-                    barrett_reduce(server_c2_eval_tmp[eval_s_iter] + temp_eval)
+                    temp_eval = barrett_reduce(mul_mod_mont(temp_eval, r1_vec[b_i]));
+                    server_c2_eval_tmp[eval_s_iter] =
+                        barrett_reduce(server_c2_eval_tmp[eval_s_iter] + temp_eval)
             }
         }
 
@@ -549,22 +548,22 @@ pub fn servers_message_welformedness_check(
     r_c2_eval: &Vec<i32>,
 ) -> (Vec<u8>, bool) {
     // step 2. d. i. B.: Beaver Triple for Message Well-formedness
-    let mut bt_c0_shares = vec![0i32; NUM_SERVERS * N_PARAM];
-    let mut bt_c1_shares = vec![0i32; NUM_SERVERS * N_PARAM];
-    let mut bt_c2_shares = vec![0i32; NUM_SERVERS * N_PARAM];
+    let mut bt_c0_shares = vec![0i32; NUM_SERVERS * B_SLICE];
+    let mut bt_c1_shares = vec![0i32; NUM_SERVERS * B_SLICE];
+    let mut bt_c2_shares = vec![0i32; NUM_SERVERS * B_SLICE];
 
-    let mut b_vec_1d_u8_total = vec![0u8; E_BYTES * N_PARAM * NUM_SERVERS];
-    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * N_PARAM * N_PARAM];
+    let mut b_vec_1d_u8_total = vec![0u8; E_BYTES * B_SLICE * NUM_SERVERS];
+    let mut s_vecs_1d_u8_eval = vec![0u8; E_BYTES * S_SLICE];
     for s_i in 0..(NUM_SERVERS - 1) {
         dpf_eval_lwe_seed_block_get_bs(
             0,
-            &mut b_vec_1d_u8_total[E_BYTES * N_PARAM * s_i..E_BYTES * N_PARAM * (s_i + 1)],
+            &mut b_vec_1d_u8_total[E_BYTES * B_SLICE * s_i..E_BYTES * B_SLICE * (s_i + 1)],
             &mut s_vecs_1d_u8_eval[..],
             &seeds[32 * (s_i)..32 * (s_i + 1)],
         );
     }
-    for i in 0..E_BYTES * N_PARAM {
-        b_vec_1d_u8_total[E_BYTES * N_PARAM * (NUM_SERVERS - 1) + i] = b_vec_1d_u8[i];
+    for i in 0..E_BYTES * B_SLICE {
+        b_vec_1d_u8_total[E_BYTES * B_SLICE * (NUM_SERVERS - 1) + i] = b_vec_1d_u8[i];
     }
     let b_vec_1d_total: &[i32] = bytemuck::cast_slice(&b_vec_1d_u8_total);
 
@@ -575,7 +574,7 @@ pub fn servers_message_welformedness_check(
         &a_bt,
         &b_bt,
         &c_bt,
-        N_PARAM,
+        B_SLICE,
         BT_INST1,
         inv_servers,
     );
@@ -584,10 +583,10 @@ pub fn servers_message_welformedness_check(
         &b_vec_1d_total[..],
         &t_c1_alpha,
         &mut bt_c1_shares,
-        &a_bt[N_PARAM..],
-        &b_bt[N_PARAM..],
-        &c_bt[N_PARAM..],
-        N_PARAM,
+        &a_bt[B_SLICE..],
+        &b_bt[B_SLICE..],
+        &c_bt[B_SLICE..],
+        B_SLICE,
         BT_INST1,
         inv_servers,
     );
@@ -596,10 +595,10 @@ pub fn servers_message_welformedness_check(
         &b_vec_1d_total[..],
         &t_c2_alpha,
         &mut bt_c2_shares,
-        &a_bt[2 * N_PARAM..],
-        &b_bt[2 * N_PARAM..],
-        &c_bt[2 * N_PARAM..],
-        N_PARAM,
+        &a_bt[2 * B_SLICE..],
+        &b_bt[2 * B_SLICE..],
+        &c_bt[2 * B_SLICE..],
+        B_SLICE,
         BT_INST1,
         inv_servers,
     );
@@ -608,13 +607,13 @@ pub fn servers_message_welformedness_check(
     let mut bt_c1_shares_sum = [0i32; NUM_SERVERS];
     let mut bt_c2_shares_sum = [0i32; NUM_SERVERS];
     for s_i in 0..NUM_SERVERS {
-        for i in 0..N_PARAM {
+        for i in 0..B_SLICE {
             bt_c0_shares_sum[s_i] =
-                barrett_reduce(bt_c0_shares_sum[s_i] + bt_c0_shares[s_i * N_PARAM + i]);
+                barrett_reduce(bt_c0_shares_sum[s_i] + bt_c0_shares[s_i * B_SLICE + i]);
             bt_c1_shares_sum[s_i] =
-                barrett_reduce(bt_c1_shares_sum[s_i] + bt_c1_shares[s_i * N_PARAM + i]);
+                barrett_reduce(bt_c1_shares_sum[s_i] + bt_c1_shares[s_i * B_SLICE + i]);
             bt_c2_shares_sum[s_i] =
-                barrett_reduce(bt_c2_shares_sum[s_i] + bt_c2_shares[s_i * N_PARAM + i]);
+                barrett_reduce(bt_c2_shares_sum[s_i] + bt_c2_shares[s_i * B_SLICE + i]);
         }
     }
 
@@ -634,9 +633,9 @@ pub fn servers_message_welformedness_check(
         &m_0_shares[..],
         &m_2_shares,
         &mut m_02_shares,
-        &a_bt[3 * N_PARAM..],
-        &b_bt[3 * N_PARAM..],
-        &c_bt[3 * N_PARAM..],
+        &a_bt[3 * B_SLICE..],
+        &b_bt[3 * B_SLICE..],
+        &c_bt[3 * B_SLICE..],
         1,
         BT_INST1,
         inv_servers,
@@ -645,9 +644,9 @@ pub fn servers_message_welformedness_check(
         &m_1_shares[..],
         &m_1_shares,
         &mut m_11_shares,
-        &a_bt[3 * N_PARAM + 1..],
-        &b_bt[3 * N_PARAM + 1..],
-        &c_bt[3 * N_PARAM + 1..],
+        &a_bt[3 * B_SLICE + 1..],
+        &b_bt[3 * B_SLICE + 1..],
+        &c_bt[3 * B_SLICE + 1..],
         1,
         BT_INST1,
         inv_servers,
@@ -692,19 +691,19 @@ pub fn server_b_e_check(
         one_shares[NUM_SERVERS - 1] = barrett_reduce(one_shares[NUM_SERVERS - 1] - one_shares[i]);
     }
 
-    let mut r2_vec_u8 = vec![0u8; E_BYTES * N_PARAM];
+    let mut r2_vec_u8 = vec![0u8; B_SLICE_BYTES];
     gen_r2_vec_sub(&r2_seed, &mut r2_vec_u8);
     let r2_vec: &[i32] = bytemuck::cast_slice(&r2_vec_u8);
 
-    let mut r2_b_shares = vec![0i32; NUM_SERVERS * N_PARAM];
-    let mut one_b_shares = vec![0i32; NUM_SERVERS * N_PARAM];
+    let mut r2_b_shares = vec![0i32; NUM_SERVERS * B_SLICE];
+    let mut one_b_shares = vec![0i32; NUM_SERVERS * B_SLICE];
 
-    for i in 0..N_PARAM {
+    for i in 0..B_SLICE {
         for s_i in 0..NUM_SERVERS {
-            r2_b_shares[s_i * N_PARAM + i] =
-                mul_mod_mont(r2_vec[i], b_vec_1d_total[s_i * N_PARAM + i]);
-            one_b_shares[s_i * N_PARAM + i] =
-                barrett_reduce(one_shares[s_i] - b_vec_1d_total[s_i * N_PARAM + i]);
+            r2_b_shares[s_i * B_SLICE + i] =
+                mul_mod_mont(r2_vec[i], b_vec_1d_total[s_i * B_SLICE + i]);
+            one_b_shares[s_i * B_SLICE + i] =
+                barrett_reduce(one_shares[s_i] - b_vec_1d_total[s_i * B_SLICE + i]);
         }
     }
 
@@ -727,12 +726,12 @@ pub fn server_b_e_check(
         }
     }
 
-    let mut b_snip_shares = [0i32; NUM_SERVERS * N_PARAM];
+    let mut b_snip_shares = [0i32; NUM_SERVERS * B_SLICE];
     let mut e_snip_shares = [0i32; NUM_SERVERS * NOISE_LEN * NOISE_BITS];
 
-    let mut a_bt_a_u8 = vec![0u8; E_BYTES * NUM_SERVERS * N_PARAM];
-    let mut b_bt_a_u8 = vec![0u8; E_BYTES * NUM_SERVERS * N_PARAM];
-    let mut c_bt_a_u8 = vec![0u8; E_BYTES * NUM_SERVERS * N_PARAM];
+    let mut a_bt_a_u8 = vec![0u8; E_BYTES * NUM_SERVERS * B_SLICE];
+    let mut b_bt_a_u8 = vec![0u8; E_BYTES * NUM_SERVERS * B_SLICE];
+    let mut c_bt_a_u8 = vec![0u8; E_BYTES * NUM_SERVERS * B_SLICE];
     let mut a_bt_b_u8 = vec![0u8; E_BYTES * NUM_SERVERS * NOISE_LEN * NOISE_BITS];
     let mut b_bt_b_u8 = vec![0u8; E_BYTES * NUM_SERVERS * NOISE_LEN * NOISE_BITS];
     let mut c_bt_b_u8 = vec![0u8; E_BYTES * NUM_SERVERS * NOISE_LEN * NOISE_BITS];

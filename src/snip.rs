@@ -507,8 +507,9 @@ pub fn gen_r1_vec_sub(r1_seed: &[u8], r1_vec: &mut [u8], seed_index: usize) {
         r1_vec,
         E_BYTES * NOISE_LEN,
         seed_index,
-        N_PARAM,
+        N_ROWS,
     );
+
 }
 
 pub fn gen_r2_vec_sub(r2_seed: &[u8], r2_vec: &mut [u8]) {
